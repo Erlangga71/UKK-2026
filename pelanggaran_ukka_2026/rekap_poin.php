@@ -1,23 +1,30 @@
 <?php
-ini_set('display_errors',1); error_reporting(E_ALL);
 include 'database.php';
 ?>
-<h2>Rekap Poin Siswa</h2>
-<table border=1 cellpadding=8 cellspacing=0>
-<tr><th>No</th><th>Nama</th><th>NIS</th><th>Total Poin</th></tr>
+<h2>Rekap Poin Pelanggaran</h2>
+<a href="dashboard.php">Kembali</a>
+<hr>
+<table border="1" cellpadding="8" cellspacing="0">
+<tr><th>No</th><th>NIS</th><th>Nama Siswa</th><th>Total Poin</th><th>Jumlah Kasus</th></tr>
 <?php
-$sql = "SELECT s.nama, s.nis, SUM(j.poin) as total 
-        FROM tbl_pelanggaran p
-        LEFT JOIN tbl_siswa s ON s.id_siswa = p.id_siswa OR s.nis = p.id_siswa
-        LEFT JOIN tbl_jenis j ON j.id_jenis = p.id_jenis
-        GROUP BY s.id_siswa, s.nis, s.nama";
-$q = mysqli_query($koneksi, $sql);
-if(!$q) die("Error: ".mysqli_error($koneksi));
 $no=1;
-while($r = mysqli_fetch_assoc($q)){
-  echo "<tr><td>$no</td><td>{$r['nama']}</td><td>{$r['nis']}</td><td><b>{$r['total']}</b></td></tr>";
-  $no++;
-}
+$q=mysqli_query($koneksi,"
+    SELECT s.nis, s.nama, SUM(j.poin) as total_poin, COUNT(p.id) as jml
+    FROM tbl_siswa s
+    LEFT JOIN tbl_pelanggaran p ON p.nis=s.nis
+    LEFT JOIN tbl_jenis j ON p.id_jenis=j.id
+    GROUP BY s.nis, s.nama
+    ORDER BY total_poin DESC
+");
+while($d=mysqli_fetch_assoc($q)){
+    $total = $d['total_poin'] ?? 0;
 ?>
+<tr>
+    <td><?=$no++?></td>
+    <td><?=$d['nis']?></td>
+    <td><?=$d['nama']?></td>
+    <td><b><?=$total?></b></td>
+    <td><?=$d['jml']?></td>
+</tr>
+<?php }?>
 </table>
-<br><a href="dashboard.php">Kembali</a> | <a href="laporan.php">Lihat Laporan</a>

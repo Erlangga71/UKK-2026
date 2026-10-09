@@ -1,15 +1,16 @@
 <?php
-ini_set('display_errors',1);
-error_reporting(E_ALL);
+ini_set('display_errors',1); error_reporting(E_ALL);
 session_start();
 if(!isset($_SESSION['login'])){ header("Location: login.php"); exit; }
 include 'database.php';
 
 if(isset($_POST['tambah'])){
-  $nis = $_POST['nis'];
-  $nama = $_POST['nama'];
-  $q = mysqli_query($koneksi, "INSERT INTO tbl_siswa (nis, nama) VALUES ('$nis','$nama')");
-  if(!$q) die(mysqli_error($koneksi));
+  $nis = $_POST['nis']; $nama = $_POST['nama'];
+  mysqli_query($koneksi, "INSERT INTO tbl_siswa (nis, nama) VALUES ('$nis','$nama')");
+  header("Location: kelola_siswa.php"); exit;
+}
+if(isset($_GET['hapus'])){
+  mysqli_query($koneksi, "DELETE FROM tbl_siswa WHERE nis='$_GET[hapus]'");
   header("Location: kelola_siswa.php"); exit;
 }
 ?>
@@ -21,12 +22,11 @@ Nama: <input name="nama" required>
 </form>
 <br>
 <table border="1" cellpadding="5">
-<tr><th>NIS</th><th>Nama</th></tr>
+<tr><th>NIS</th><th>Nama</th><th>Aksi</th></tr>
 <?php
 $q = mysqli_query($koneksi,"SELECT * FROM tbl_siswa");
-if(!$q) die("Error query siswa: ".mysqli_error($koneksi));
 while($r=mysqli_fetch_assoc($q)){
-  echo "<tr><td>$r[nis]</td><td>$r[nama]</td></tr>";
+  echo "<tr><td>$r[nis]</td><td>$r[nama]</td><td><a href='?hapus=$r[nis]'>Hapus</a></td></tr>";
 }
 ?>
 </table>
