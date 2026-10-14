@@ -1,48 +1,65 @@
 <?php
-session_start();
-if(!isset($_SESSION['login'])){ header("Location: login.php"); exit; }
-include 'database.php';
-$role = $_SESSION['role'] ?? 'admin';
+require 'database.php';
+wajib_login();
+
+$sql = "SELECT p.id, p.tanggal, p.keterangan, p.status,
+               s.nis, s.nama AS nama_siswa,
+               j.nama AS nama_pelanggaran, j.poin
+        FROM pelanggaran p
+        JOIN siswa s ON s.id = p.siswa_id
+        JOIN jenis_pelanggaran j ON j.id = p.jenis_id
+        ORDER BY p.tanggal DESC, p.id DESC";
+
+$data = $koneksi->query($sql);
 ?>
-<h2>Riwayat Pelanggaran Siswa</h2>
-<a href="dashboard.php">Kembali</a>
-<hr>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Riwayat Pelanggaran</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+    <strong>Riwayat Pelanggaran</strong>
+    <a class="btn" href="dashboard.php">Dashboard</a>
+</header>
+<main class="content">
+    <h1>Riwayat Pelanggaran Siswa</h1>
 
-<form method="get">
-Cari NIS / Nama: <input type="text" name="cari" value="<?= $_GET['cari'] ?? '' ?>">
-<button type="submit">Cari</button> <a href="riwayat.php">Reset</a>
-</form>
-<br>
+    <?php if (isset($_GET['sukses'])): ?>
+        <p>Data pelanggaran berhasil disimpan.</p>
+    <?php endif; ?>
 
-<table border="1" cellpadding="8" cellspacing="0">
-<tr><th>No</th><th>Tanggal</th><th>NIS</th><th>Nama Siswa</th><th>Jenis Pelanggaran</th><th>Poin</th><th>Tindakan</th></tr>
-<?php
-$no=1;
-$cari = $_GET['cari'] ?? '';
-$where = "";
-if($cari != ""){
-    $where = "WHERE s.nis LIKE '%$cari%' OR s.nama LIKE '%$cari%'";
-}
-
-$q = mysqli_query($koneksi,"
-    SELECT p.*, s.nama, j.nama_jenis, j.poin, t.tindakan 
-    FROM tbl_pelanggaran p 
-    JOIN tbl_siswa s ON p.nis=s.nis 
-    JOIN tbl_jenis j ON p.id_jenis=j.id 
-    LEFT JOIN tbl_tindakan t ON t.id_pelanggaran=p.id
-    $where
-    ORDER BY p.tgl DESC
-");
-while($d=mysqli_fetch_assoc($q)){
-?>
-<tr>
-    <td><?=$no++?></td>
-    <td><?=$d['tgl']?></td>
-    <td><?=$d['nis']?></td>
-    <td><?=$d['nama']?></td>
-    <td><?=$d['nama_jenis']?></td>
-    <td><?=$d['poin']?></td>
-    <td><?=$d['tindakan'] ?? '<i>Belum ditindak</i>'?></td>
-</tr>
-<?php }?>
-</table>
+    <div class="table-wrap">
+    <table>
+        <thead>
+        <tr>
+            <th>Tanggal</th>
+            <th>NIS</th>
+            <th>Nama Siswa</th>
+            <th>Pelanggaran</th>
+            <th>Poin</th>
+            <th>Status</th>
+            <th>Keterangan</th>
+        </tr>
+        </thead>
+        <tbody>
+        <?php while ($r = $data->fetch_assoc()): ?>
+        <tr>
+            <td><?= e($r['tanggal']) ?></td>
+            <td><?= e($r['nis']) ?></td>
+            <td><?= e($r['nama_siswa']) ?></td>
+            <td><?= e($r['nama_pelanggaran']) ?></td>
+            <td><?= (int)$r['poin'] ?></td>
+            <td><?= e($r['status']) ?></td>
+            <td><?= e($r['keterangan']) ?></td>
+        </tr>
+        <?php endwhile; ?>
+        </tbody>
+    </table>
+    </div>
+</main>
+</body>
+</html>
