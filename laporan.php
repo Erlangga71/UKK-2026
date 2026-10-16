@@ -1,56 +1,259 @@
 <?php
-include 'database.php';
-?>
-<!DOCTYPE html>
-<html>
-<head><title>Laporan Pelanggaran</title></head>
-<body>
-<h2>Laporan Pelanggaran</h2>
-<a href="dashboard.php">Kembali ke Dashboard</a> | 
-<a href="cetak_export.php"><button>Cetak</button></a>
-<hr>
 
-<table border="1" cellpadding="8" cellspacing="0">
-<tr>
-    <th>No</th>
-    <th>Tanggal</th>
-    <th>Nama Siswa</th>
-    <th>NIS</th>
-    <th>Pelanggaran</th>
-    <th>Poin</th>
-    <th>Keterangan</th>
-</tr>
-<?php
-$no=1;
-// FIX: pake p.id bukan p.id_pelanggaran, p.nis bukan p.id_siswa
-$q = mysqli_query($koneksi,"
-    SELECT p.*, s.nama, j.nama_jenis, j.poin 
-    FROM tbl_pelanggaran p 
-    JOIN tbl_siswa s ON p.nis = s.nis 
-    JOIN tbl_jenis j ON p.id_jenis = j.id 
-    ORDER BY p.tgl DESC
+require_once "cek_role.php";
+
+wajib_role(['admin', 'guru', 'wali_kelas']);
+
+include "database.php";
+
+$query = mysqli_query($koneksi, "
+    SELECT
+        pelanggaran.id,
+        siswa.nama AS nama_siswa,
+        jenis_pelanggaran.nama AS jenis_pelanggaran,
+        jenis_pelanggaran.poin,
+        pelanggaran.tanggal,
+        pelanggaran.status,
+        kelas.nama_kelas
+    FROM pelanggaran
+
+    JOIN siswa
+        ON pelanggaran.siswa_id = siswa.id
+
+    JOIN jenis_pelanggaran
+        ON pelanggaran.jenis_id = jenis_pelanggaran.id
+
+    LEFT JOIN penempatan_siswa
+        ON siswa.id = penempatan_siswa.siswa_id
+
+    LEFT JOIN kelas
+        ON penempatan_siswa.kelas_id = kelas.id
+
+    ORDER BY pelanggaran.tanggal DESC
 ");
 
-if(!$q){
-    echo "<tr><td colspan='7'>Error: ".mysqli_error($koneksi)."</td></tr>";
-} else {
-    while($d=mysqli_fetch_assoc($q)){
 ?>
-<tr>
-    <td><?=$no++?></td>
-    <td><?=$d['tgl']?></td>
-    <td><?=$d['nama']?></td>
-    <td><?=$d['nis']?></td>
-    <td><?=$d['nama_jenis']?></td>
-    <td><?=$d['poin']?></td>
-    <td><?=$d['keterangan']?></td>
-</tr>
-<?php 
-    }
-    if($no==1) echo "<tr><td colspan='7' align='center'>Belum ada data pelanggaran</td></tr>";
-}
-?>
-</table>
+
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <title>Laporan Pelanggaran</title>
+
+    <link rel="stylesheet" href="style.css">
+
+    <style>
+
+        .judul-laporan {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .judul-laporan h2 {
+            margin-bottom: 5px;
+            color: #086177;
+        }
+
+        .judul-laporan p {
+            margin: 3px;
+        }
+
+        .tanggal-cetak {
+            text-align: right;
+            margin-bottom: 15px;
+        }
+
+        .tombol {
+            margin-bottom: 20px;
+        }
+
+        @media print {
+
+            .header {
+                display: none;
+            }
+
+            .tombol {
+                display: none;
+            }
+
+            body {
+                background: white;
+            }
+
+            .container {
+                width: 100%;
+                max-width: none;
+                margin: 0;
+            }
+
+            .box {
+                box-shadow: none;
+                border: none;
+            }
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+
+            th,
+            td {
+                border: 1px solid #000;
+                padding: 8px;
+            }
+
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+<div class="header">
+
+    <b>SISTEM INFORMASI PELANGGARAN SISWA</b>
+
+    <a href="dashboard.php">
+        Kembali
+    </a>
+
+</div>
+
+
+<div class="container">
+
+    <div class="box">
+
+        <div class="tombol">
+
+            <button
+                onclick="window.print()"
+                class="btn"
+            >
+                Cetak Laporan
+            </button>
+
+        </div>
+
+
+        <div class="judul-laporan">
+
+            <h2>
+                LAPORAN PELANGGARAN SISWA
+            </h2>
+
+            <p>
+                SISTEM INFORMASI PELANGGARAN SISWA
+            </p>
+
+            <p>
+                SMK
+            </p>
+
+        </div>
+
+
+        <div class="tanggal-cetak">
+
+            Tanggal Cetak:
+            <?= date('d-m-Y'); ?>
+
+        </div>
+
+
+        <table>
+
+            <tr>
+
+                <th>No</th>
+
+                <th>Nama Siswa</th>
+
+                <th>Kelas</th>
+
+                <th>Jenis Pelanggaran</th>
+
+                <th>Poin</th>
+
+                <th>Tanggal</th>
+
+                <th>Status</th>
+
+            </tr>
+
+
+            <?php
+
+            $no = 1;
+
+            while ($data = mysqli_fetch_assoc($query)) {
+
+            ?>
+
+            <tr>
+
+                <td>
+                    <?= $no++; ?>
+                </td>
+
+                <td>
+                    <?= htmlspecialchars($data['nama_siswa']); ?>
+                </td>
+
+                <td>
+                    <?= htmlspecialchars($data['nama_kelas'] ?? '-'); ?>
+                </td>
+
+                <td>
+                    <?= htmlspecialchars($data['jenis_pelanggaran']); ?>
+                </td>
+
+                <td>
+                    <?= htmlspecialchars($data['poin']); ?>
+                </td>
+
+                <td>
+                    <?= date(
+                        'd-m-Y',
+                        strtotime($data['tanggal'])
+                    ); ?>
+                </td>
+
+                <td>
+                    <?= htmlspecialchars($data['status']); ?>
+                </td>
+
+            </tr>
+
+            <?php } ?>
+
+        </table>
+
+
+        <br><br>
+
+
+        <div style="text-align:right;">
+
+            Mengetahui,
+
+            <br><br><br><br>
+
+            __________________________
+
+            <br>
+
+            Petugas / Admin
+
+        </div>
+
+    </div>
+
+</div>
 
 </body>
+
 </html>

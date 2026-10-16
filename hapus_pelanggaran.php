@@ -1,6 +1,15 @@
 <?php
-include 'database.php';
+
+include "database.php";
+
 $id = $_GET['id'];
-mysqli_query($koneksi, "DELETE FROM tbl_pelanggaran WHERE id_pelanggaran='$id'");
-header("Location: laporan.php");
+
+mysqli_query(
+    $koneksi,
+    "DELETE FROM pelanggaran WHERE id='$id'"
+);
+
+header("Location: pelanggaran.php");
+exit;
+
 ?>

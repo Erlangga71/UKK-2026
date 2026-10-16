@@ -1,4 +1,9 @@
 <?php
+
+require_once "cek_role.php";
+
+wajib_role(['admin']);
+
 include 'database.php';
 
 if(isset($_POST['simpan'])){

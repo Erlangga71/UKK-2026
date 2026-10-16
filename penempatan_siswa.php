@@ -1,224 +1,107 @@
 <?php
-require 'database.php';
 
-wajib_login();
 
-/* SIMPAN */
-if (isset($_POST['simpan'])) {
+require_once "cek_role.php";
 
-    $siswa_id = (int) $_POST['siswa_id'];
-    $kelas_id = (int) $_POST['kelas_id'];
-    $tahun_ajaran_id = (int) $_POST['tahun_ajaran_id'];
+wajib_role(['admin']);
 
-    $sql = "INSERT INTO penempatan_siswa 
-            (siswa_id, kelas_id, tahun_ajaran_id)
-            VALUES (?, ?, ?)";
+include "database.php";
 
-    $stmt = mysqli_prepare($koneksi, $sql);
-    mysqli_stmt_bind_param(
-        $stmt,
-        "iii",
-        $siswa_id,
-        $kelas_id,
-        $tahun_ajaran_id
-    );
+$query = mysqli_query($koneksi, "
+    SELECT 
+        penempatan_siswa.id,
+        siswa.nama AS nama_siswa,
+        kelas.nama_kelas,
+        tahun_ajaran.nama AS tahun_ajaran
+    FROM penempatan_siswa
+    JOIN siswa ON penempatan_siswa.siswa_id = siswa.id
+    JOIN kelas ON penempatan_siswa.kelas_id = kelas.id
+    JOIN tahun_ajaran ON penempatan_siswa.tahun_ajaran_id = tahun_ajaran.id
+    ORDER BY penempatan_siswa.id DESC
+");
 
-    if (mysqli_stmt_execute($stmt)) {
-        echo "<script>
-                alert('Penempatan siswa berhasil!');
-                window.location='penempatan_siswa.php';
-              </script>";
-        exit;
-    } else {
-        echo "Gagal menyimpan: " . mysqli_error($koneksi);
-    }
-}
-
-/* HAPUS */
-if (isset($_GET['hapus'])) {
-
-    $id = (int) $_GET['hapus'];
-
-    mysqli_query(
-        $koneksi,
-        "DELETE FROM penempatan_siswa WHERE id = $id"
-    );
-
-    header("Location: penempatan_siswa.php");
-    exit;
-}
 ?>
 
 <!DOCTYPE html>
-<html lang="id">
+<html>
 <head>
-    <meta charset="UTF-8">
     <title>Penempatan Siswa</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-<h2>Penempatan Siswa</h2>
+<div class="header">
+    <b>SISTEM INFORMASI PELANGGARAN SISWA</b>
+    <a href="dashboard.php">Kembali</a>
+</div>
 
-<a href="dashboard.php">Kembali ke Dashboard</a>
+<div class="container">
 
-<hr>
+    <div class="box">
 
-<form method="post">
+        <h2>Penempatan Siswa</h2>
 
-    <p>
-        <label>Siswa:</label><br>
-
-        <select name="siswa_id" required>
-            <option value="">-- Pilih Siswa --</option>
-
-            <?php
-            $q = mysqli_query(
-                $koneksi,
-                "SELECT id, nis, nama
-                 FROM siswa
-                 WHERE aktif = 1
-                 ORDER BY nama"
-            );
-
-            while ($s = mysqli_fetch_assoc($q)) {
-                echo "<option value='{$s['id']}'>
-                        {$s['nis']} - {$s['nama']}
-                      </option>";
-            }
-            ?>
-
-        </select>
-    </p>
-
-    <p>
-        <label>Kelas:</label><br>
-
-        <select name="kelas_id" required>
-            <option value="">-- Pilih Kelas --</option>
-
-            <?php
-            $q = mysqli_query(
-                $koneksi,
-                "SELECT id, nama_kelas
-                 FROM kelas
-                 ORDER BY nama_kelas"
-            );
-
-            while ($k = mysqli_fetch_assoc($q)) {
-                echo "<option value='{$k['id']}'>
-                        {$k['nama_kelas']}
-                      </option>";
-            }
-            ?>
-
-        </select>
-    </p>
-
-    <p>
-        <label>Tahun Ajaran:</label><br>
-
-        <select name="tahun_ajaran_id" required>
-            <option value="">-- Pilih Tahun Ajaran --</option>
-
-            <?php
-            $q = mysqli_query(
-                $koneksi,
-                "SELECT id, nama
-                 FROM tahun_ajaran
-                 ORDER BY id DESC"
-            );
-
-            while ($t = mysqli_fetch_assoc($q)) {
-                echo "<option value='{$t['id']}'>
-                        {$t['nama']}
-                      </option>";
-            }
-            ?>
-
-        </select>
-    </p>
-
-    <button type="submit" name="simpan">
-        Simpan
-    </button>
-
-</form>
-
-<hr>
-
-<h3>Data Penempatan Siswa</h3>
-
-<table border="1" cellpadding="8" cellspacing="0">
-
-    <tr>
-        <th>No</th>
-        <th>NIS</th>
-        <th>Nama Siswa</th>
-        <th>Kelas</th>
-        <th>Tahun Ajaran</th>
-        <th>Aksi</th>
-    </tr>
-
-<?php
-
-$no = 1;
-
-$sql = "
-    SELECT 
-        ps.id,
-        s.nis,
-        s.nama,
-        k.nama_kelas,
-        ta.nama AS tahun_ajaran
-
-    FROM penempatan_siswa ps
-
-    JOIN siswa s
-        ON ps.siswa_id = s.id
-
-    JOIN kelas k
-        ON ps.kelas_id = k.id
-
-    JOIN tahun_ajaran ta
-        ON ps.tahun_ajaran_id = ta.id
-
-    ORDER BY k.nama_kelas, s.nama
-";
-
-$q = mysqli_query($koneksi, $sql);
-
-while ($d = mysqli_fetch_assoc($q)) {
-?>
-
-<tr>
-
-    <td><?= $no++ ?></td>
-
-    <td><?= e($d['nis']) ?></td>
-
-    <td><?= e($d['nama']) ?></td>
-
-    <td><?= e($d['nama_kelas']) ?></td>
-
-    <td><?= e($d['tahun_ajaran']) ?></td>
-
-    <td>
-        <a
-            href="?hapus=<?= $d['id'] ?>"
-            onclick="return confirm('Yakin ingin menghapus data ini?')"
-        >
-            Hapus
+        <a href="tambah_penempatan_siswa.php" class="btn-tambah">
+            + Tambah Penempatan
         </a>
-    </td>
 
-</tr>
+        <table>
 
-<?php
-}
-?>
+            <tr>
+                <th>No</th>
+                <th>Nama Siswa</th>
+                <th>Kelas</th>
+                <th>Tahun Ajaran</th>
+                <th>Aksi</th>
+            </tr>
 
-</table>
+            <?php
+            $no = 1;
+
+            while ($data = mysqli_fetch_assoc($query)) {
+            ?>
+
+            <tr>
+
+                <td><?= $no++; ?></td>
+
+                <td>
+                    <?= htmlspecialchars($data['nama_siswa']); ?>
+                </td>
+
+                <td>
+                    <?= htmlspecialchars($data['nama_kelas']); ?>
+                </td>
+
+                <td>
+                    <?= htmlspecialchars($data['tahun_ajaran']); ?>
+                </td>
+
+                <td>
+
+                    <a href="edit_penempatan_siswa.php?id=<?= $data['id']; ?>"
+                       class="btn-edit">
+                        Edit
+                    </a>
+
+                    <a href="hapus_penempatan_siswa.php?id=<?= $data['id']; ?>"
+                       class="btn-hapus"
+                       onclick="return confirm('Yakin ingin menghapus data ini?')">
+                        Hapus
+                    </a>
+
+                </td>
+
+            </tr>
+
+            <?php } ?>
+
+        </table>
+
+    </div>
+
+</div>
 
 </body>
 </html>

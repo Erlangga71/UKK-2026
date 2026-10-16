@@ -1,11 +1,48 @@
 <?php
-include 'koneksi.php'; // kalo nama file koneksi lu beda, ganti ya
 
-$nis = $_GET['nis'];
-mysqli_query($conn, "DELETE FROM siswa WHERE nis='$nis'");
+require_once "cek_role.php";
+wajib_role(['admin']);
 
-// kalo nama tabel lu t_siswa, pake yang bawah ini, yang atas hapus
-// mysqli_query($conn, "DELETE FROM t_siswa WHERE nis='$nis'");
+include "database.php";
 
-header("Location: kelola_siswa.php");
+if (!isset($_GET['id'])) {
+    header("Location: siswa.php");
+    exit;
+}
+
+$id = intval($_GET['id']);
+
+
+
+
+mysqli_query(
+    $koneksi,
+    "DELETE FROM penempatan_siswa WHERE siswa_id = $id"
+);
+
+
+
+mysqli_query(
+    $koneksi,
+    "DELETE FROM pelanggaran WHERE siswa_id = $id"
+);
+
+
+
+$query = mysqli_query(
+    $koneksi,
+    "DELETE FROM siswa WHERE id = $id"
+);
+
+if ($query) {
+
+    header("Location: siswa.php");
+    exit;
+
+} else {
+
+    die("Gagal menghapus siswa: " . mysqli_error($koneksi));
+
+}
+
 ?>

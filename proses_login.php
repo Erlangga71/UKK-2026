@@ -1,38 +1,73 @@
 <?php
 
-require 'database.php';
+session_start();
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('Location: login.php');
-    exit;
-}
+include "database.php";
 
-$username = trim($_POST['username'] ?? '');
+$username = $_POST['username'] ?? '';
 $password = $_POST['password'] ?? '';
 
-$stmt = $koneksi->prepare(
-    "SELECT id, nama, username, password, role
+$username = mysqli_real_escape_string($koneksi, $username);
+
+$query = mysqli_query(
+    $koneksi,
+    "SELECT id, nama, username, password, role, aktif
      FROM users
-     WHERE username = ? AND aktif = 1
+     WHERE username = '$username'
      LIMIT 1"
 );
 
-$stmt->bind_param("s", $username);
-$stmt->execute();
-
-$user = $stmt->get_result()->fetch_assoc();
-
-if (!$user || !password_verify($password, $user['password'])) {
-    header("Location: login.php?error=1");
-    exit;
+if (!$query) {
+    die("Query error: " . mysqli_error($koneksi));
 }
 
-session_regenerate_id(true);
+if (mysqli_num_rows($query) == 0) {
 
-$_SESSION['user_id'] = (int)$user['id'];
+    header("Location: login.php?pesan=Username tidak ditemukan");
+    exit;
+
+}
+
+$user = mysqli_fetch_assoc($query);
+
+
+/* CEK PASSWORD */
+
+if ($password != $user['password']) {
+
+    header("Location: login.php?pesan=Password salah");
+    exit;
+
+}
+
+
+/* CEK AKUN */
+
+if ($user['aktif'] == 0) {
+
+    header("Location: login.php?pesan=Akun tidak aktif");
+    exit;
+
+}
+
+
+/* SIMPAN SESSION */
+
+$_SESSION['login'] = true;
+
+$_SESSION['id'] = $user['id'];
+
 $_SESSION['nama'] = $user['nama'];
+
 $_SESSION['username'] = $user['username'];
-$_SESSION['role'] = $user['role'];
+
+$_SESSION['role'] = trim($user['role']);
+
+
+/* PINDAH KE DASHBOARD */
 
 header("Location: dashboard.php");
+
 exit;
+
+?>
