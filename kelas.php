@@ -1,4 +1,5 @@
 <?php
+
 require_once "cek_role.php";
 
 wajib_role(['admin']);
@@ -13,15 +14,21 @@ $query = mysqli_query($koneksi, "SELECT * FROM kelas");
 <html>
 
 <head>
+
     <title>Data Kelas</title>
+
     <link rel="stylesheet" href="style.css">
+
 </head>
 
 <body>
 
 <div class="header">
+
     <b>SISTEM INFORMASI PELANGGARAN SISWA</b>
+
     <a href="dashboard.php">Kembali</a>
+
 </div>
 
 <div class="container">
@@ -34,11 +41,16 @@ $query = mysqli_query($koneksi, "SELECT * FROM kelas");
             + Tambah Kelas
         </a>
 
+        <br><br>
+
         <table>
 
             <tr>
                 <th>No</th>
                 <th>Nama Kelas</th>
+                <th>Jurusan</th>
+                <th>Tingkat</th>
+                <th>Status</th>
                 <th>Aksi</th>
             </tr>
 
@@ -50,12 +62,24 @@ $query = mysqli_query($koneksi, "SELECT * FROM kelas");
 
             <tr>
 
-                <td>
-                    <?= $no++; ?>
-                </td>
+                <td><?= $no++; ?></td>
 
                 <td>
                     <?= htmlspecialchars($data['nama_kelas']); ?>
+                </td>
+
+                <td>
+                    <?= htmlspecialchars($data['jurusan'] ?? '-'); ?>
+                </td>
+
+                <td>
+                    <?= htmlspecialchars($data['tingkat'] ?? '-'); ?>
+                </td>
+
+                <td>
+                    <?= $data['status_aktif'] == 1
+                        ? 'Aktif'
+                        : 'Tidak Aktif'; ?>
                 </td>
 
                 <td>
@@ -79,9 +103,7 @@ $query = mysqli_query($koneksi, "SELECT * FROM kelas");
 
             </tr>
 
-            <?php
-            }
-            ?>
+            <?php } ?>
 
         </table>
 
@@ -90,4 +112,5 @@ $query = mysqli_query($koneksi, "SELECT * FROM kelas");
 </div>
 
 </body>
+
 </html>

@@ -1,41 +1,27 @@
 <?php
 
-include "database.php";
+require_once "cek_role.php";
 
-$pesan = "";
+wajib_role(['admin']);
+
+include "database.php";
 
 if (isset($_POST['simpan'])) {
 
     $nama_kelas = $_POST['nama_kelas'];
+    $jurusan = $_POST['jurusan'];
+    $tingkat = $_POST['tingkat'];
+    $status_aktif = $_POST['status_aktif'];
 
-    // Cek nama kelas
-    $cek = mysqli_query(
-        $koneksi,
-        "SELECT * FROM kelas WHERE nama_kelas='$nama_kelas'"
-    );
+    mysqli_query($koneksi, "
+        INSERT INTO kelas
+        (nama_kelas, jurusan, tingkat, status_aktif)
+        VALUES
+        ('$nama_kelas', '$jurusan', '$tingkat', '$status_aktif')
+    ");
 
-    if (mysqli_num_rows($cek) > 0) {
-
-        $pesan = "Nama kelas tersebut sudah ada.";
-
-    } else {
-
-        $query = mysqli_query($koneksi, "
-            INSERT INTO kelas (nama_kelas)
-            VALUES ('$nama_kelas')
-        ");
-
-        if ($query) {
-
-            header("Location: kelas.php");
-            exit;
-
-        } else {
-
-            $pesan = "Data kelas gagal ditambahkan: "
-                   . mysqli_error($koneksi);
-        }
-    }
+    header("Location: kelas.php");
+    exit;
 }
 
 ?>
@@ -44,8 +30,11 @@ if (isset($_POST['simpan'])) {
 <html>
 
 <head>
-    <title>Tambah Kelas</title>
+
+    <title>Tambah Data Kelas</title>
+
     <link rel="stylesheet" href="style.css">
+
 </head>
 
 <body>
@@ -64,38 +53,60 @@ if (isset($_POST['simpan'])) {
 
         <h2>Tambah Data Kelas</h2>
 
-        <?php if ($pesan != "") { ?>
-
-            <p class="pesan">
-                <?= htmlspecialchars($pesan); ?>
-            </p>
-
-        <?php } ?>
-
         <form method="POST">
 
             <label>Nama Kelas</label>
             <br>
-
             <input
                 type="text"
                 name="nama_kelas"
-                placeholder="Contoh: X RPL 1"
                 required
             >
 
             <br><br>
 
-            <button
-                type="submit"
-                name="simpan"
-                class="btn">
+            <label>Jurusan</label>
+            <br>
+            <input
+                type="text"
+                name="jurusan"
+                placeholder="Contoh: RPL"
+                required
+            >
+
+            <br><br>
+
+            <label>Tingkat</label>
+            <br>
+
+            <select name="tingkat" required>
+
+                <option value="">-- Pilih Tingkat --</option>
+                <option value="X">X</option>
+                <option value="XI">XI</option>
+                <option value="XII">XII</option>
+
+            </select>
+
+            <br><br>
+
+            <label>Status</label>
+            <br>
+
+            <select name="status_aktif">
+
+                <option value="1">Aktif</option>
+                <option value="0">Tidak Aktif</option>
+
+            </select>
+
+            <br><br>
+
+            <button type="submit" name="simpan">
                 Simpan
             </button>
 
-            <a
-                href="kelas.php"
-                class="btn-tambah">
+            <a href="kelas.php">
                 Batal
             </a>
 
@@ -106,4 +117,5 @@ if (isset($_POST['simpan'])) {
 </div>
 
 </body>
+
 </html>
