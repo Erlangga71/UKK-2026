@@ -9,109 +9,172 @@ body {
     color: #333;
 }
 
-/* LOGIN */
+/* =========================
+   LAYOUT
+========================= */
 
-.login-box {
-    width: 350px;
-    margin: 100px auto;
-    padding: 25px;
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 5px;
+.layout {
+    display: flex;
+    min-height: 100vh;
 }
 
-.login-box h2 {
-    text-align: center;
+/* =========================
+   SIDEBAR
+========================= */
+
+.sidebar {
+    width: 230px;
+    min-height: 100vh;
+    background: linear-gradient(#004d4d, #002b2b);
+    padding: 20px 15px;
+    flex-shrink: 0;
+}
+
+.sidebar h2 {
+    color: white;
+    font-size: 20px;
+    margin: 0 0 25px 10px;
+}
+
+.sidebar a {
+    display: block;
+    color: white;
+    text-decoration: none;
+    padding: 12px 15px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.08);
+}
+
+.sidebar a:hover,
+.sidebar a.active {
+    background: #176b80;
+}
+
+.sidebar .logout {
+    margin-top: 25px;
+    background: #7b1e1e;
+}
+
+.sidebar .logout:hover {
+    background: #a52a2a;
+}
+
+/* =========================
+   CONTENT
+========================= */
+
+.content {
+    flex: 1;
+    padding: 30px 45px;
+    background: #f7f7f7;
+}
+
+.top-title {
     margin-bottom: 25px;
 }
 
-.login-box label {
-    display: block;
-    margin-top: 10px;
+.top-title h1 {
+    margin: 0;
+    font-size: 32px;
+    color: #222;
 }
 
-.login-box input {
-    width: 100%;
-    padding: 10px;
-    margin-top: 5px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+.top-title p {
+    margin: 8px 0;
+    color: #666;
 }
 
-.btn {
-    width: 100%;
-    padding: 10px;
-    margin-top: 15px;
-    border: none;
-    background: #333;
+/* =========================
+   STATISTIK
+========================= */
+
+.statistik {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    margin-bottom: 35px;
+}
+
+.stat-box {
+    min-height: 100px;
+    padding: 18px;
+    border-radius: 10px;
     color: white;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.btn:hover {
-    background: #555;
-}
-
-.pesan {
-    text-align: center;
-    color: red;
-}
-
-/* HEADER */
-
-.header {
-    background: white;
-    border-bottom: 1px solid #ddd;
-    padding: 15px 30px;
-}
-
-.header a {
-    float: right;
-    color: red;
-    text-decoration: none;
-}
-
-/* CONTENT */
-
-.container {
-    width: 90%;
-    max-width: 1100px;
-    margin: 25px auto;
-}
-
-.box {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    padding: 20px;
-    margin-bottom: 20px;
-}
-
-/* MENU */
-
-.menu {
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
     gap: 15px;
 }
 
-.menu a {
-    width: 180px;
-    padding: 20px;
+.stat-icon {
+    width: 50px;
+    height: 50px;
     background: white;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    text-decoration: none;
     color: #333;
-    text-align: center;
+    border-radius: 8px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 25px;
+    flex-shrink: 0;
 }
 
-.menu a:hover {
-    background: #eee;
+.stat-info {
+    font-size: 13px;
 }
 
-/* TABEL */
+.stat-info b {
+    display: block;
+    font-size: 22px;
+    margin-top: 5px;
+}
+
+.stat-siswa {
+    background: linear-gradient(135deg, #d00091, #8b006b);
+}
+
+.stat-pelanggaran {
+    background: linear-gradient(135deg, #3d00d9, #25008c);
+}
+
+.stat-bulan {
+    background: linear-gradient(135deg, #ef00a9, #c00086);
+}
+
+.stat-masalah {
+    background: linear-gradient(135deg, #167d91, #07566a);
+}
+
+/* =========================
+   BOX INFORMASI
+========================= */
+
+.content-box {
+    background: white;
+    border-radius: 8px;
+    padding: 25px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.content-box h2 {
+    margin-top: 0;
+    color: #222;
+}
+
+.content-box .subjudul {
+    color: #777;
+    margin-bottom: 20px;
+}
+
+/* =========================
+   TABEL
+========================= */
+
+.table-wrapper {
+    overflow-x: auto;
+}
 
 table {
     width: 100%;
@@ -119,35 +182,77 @@ table {
     background: white;
 }
 
-table th,
-table td {
-    border: 1px solid #ddd;
-    padding: 10px;
-    text-align: left;
-}
-
 table th {
-    background: #eee;
+    background: #006b6b;
+    color: white;
+    padding: 12px;
+    text-align: left;
+    font-size: 14px;
 }
 
-/* BUTTON */
+table td {
+    padding: 12px;
+    border-bottom: 1px solid #ddd;
+}
 
-.btn-tambah {
+table tr:hover {
+    background: #f1fafa;
+}
+
+/* =========================
+   BUTTON
+========================= */
+
+.btn {
     display: inline-block;
-    padding: 8px 12px;
-    background: #333;
+    padding: 9px 15px;
+    background: #176b80;
     color: white;
     text-decoration: none;
-    border-radius: 4px;
-    margin-bottom: 15px;
+    border-radius: 5px;
 }
 
-.btn-edit {
-    color: #333;
-    text-decoration: none;
+.btn:hover {
+    background: #0d5364;
 }
 
-.btn-hapus {
-    color: red;
-    text-decoration: none;
+/* =========================
+   MOBILE
+========================= */
+
+@media (max-width: 900px) {
+
+    .sidebar {
+        width: 190px;
+    }
+
+    .content {
+        padding: 25px;
+    }
+
+    .statistik {
+        grid-template-columns: 1fr 1fr;
+    }
+
+}
+
+@media (max-width: 600px) {
+
+    .layout {
+        display: block;
+    }
+
+    .sidebar {
+        width: 100%;
+        min-height: auto;
+    }
+
+    .content {
+        padding: 20px;
+    }
+
+    .statistik {
+        grid-template-columns: 1fr;
+    }
+
 }

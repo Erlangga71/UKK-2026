@@ -4,13 +4,29 @@ require_once "cek_role.php";
 
 wajib_role(['admin']);
 
-include "database.php";
+require_once "database.php";
 
-$query = mysqli_query($koneksi, "
-    SELECT *
-    FROM siswa
-    ORDER BY id DESC
-");
+
+// HAPUS DATA
+if (isset($_GET['hapus'])) {
+
+    $id = (int) $_GET['hapus'];
+
+    mysqli_query(
+        $koneksi,
+        "DELETE FROM siswa WHERE id = $id"
+    );
+
+    header("Location: siswa.php");
+    exit;
+}
+
+
+// AMBIL DATA SISWA
+$query = mysqli_query(
+    $koneksi,
+    "SELECT * FROM siswa ORDER BY id DESC"
+);
 
 ?>
 
@@ -21,11 +37,18 @@ $query = mysqli_query($koneksi, "
 
     <title>Data Siswa</title>
 
+    <!-- DataTables CSS -->
+    <link rel="stylesheet"
+          href="https://cdn.datatables.net/2.3.4/css/dataTables.dataTables.min.css">
+
     <link rel="stylesheet" href="style.css">
 
 </head>
 
 <body>
+
+
+<!-- HEADER -->
 
 <div class="header">
 
@@ -48,103 +71,142 @@ $query = mysqli_query($koneksi, "
             + Tambah Siswa
         </a>
 
-        <br><br>
+
+        <div style="overflow-x:auto;">
+
+            <table id="tabelSiswa">
+
+                <thead>
+
+                    <tr>
+
+                        <th>No</th>
+
+                        <th>NIS</th>
+
+                        <th>Nama</th>
+
+                        <th>Jenis Kelamin</th>
+
+                        <th>Alamat</th>
+
+                        <th>No HP Orang Tua</th>
+
+                        <th>Status</th>
+
+                        <th>Aksi</th>
+
+                    </tr>
+
+                </thead>
 
 
-        <table>
+                <tbody>
 
-            <tr>
+                <?php
 
-                <th>No</th>
-                <th>NIS</th>
-                <th>Nama</th>
-                <th>Jenis Kelamin</th>
-                <th>Alamat</th>
-                <th>No. HP Orang Tua</th>
-                <th>Status</th>
-                <th>Aksi</th>
+                $no = 1;
 
-            </tr>
+                while ($siswa = mysqli_fetch_assoc($query)) {
 
+                ?>
 
-            <?php
+                    <tr>
 
-            $no = 1;
+                        <td>
+                            <?= $no++; ?>
+                        </td>
 
-            while ($data = mysqli_fetch_assoc($query)) {
+                        <td>
+                            <?= htmlspecialchars($siswa['nis']); ?>
+                        </td>
 
-            ?>
+                        <td>
+                            <?= htmlspecialchars($siswa['nama']); ?>
+                        </td>
 
-            <tr>
+                        <td>
+                            <?= htmlspecialchars($siswa['jenis_kelamin'] ?? '-'); ?>
+                        </td>
 
-                <td>
-                    <?= $no++; ?>
-                </td>
+                        <td>
+                            <?= htmlspecialchars($siswa['alamat'] ?? '-'); ?>
+                        </td>
 
-                <td>
-                    <?= htmlspecialchars($data['nis']); ?>
-                </td>
+                        <td>
+                            <?= htmlspecialchars($siswa['no_hp_ortu'] ?? '-'); ?>
+                        </td>
 
-                <td>
-                    <?= htmlspecialchars($data['nama']); ?>
-                </td>
+                        <td>
 
-                <td>
-                    <?= htmlspecialchars($data['jenis_kelamin']); ?>
-                </td>
+                            <?php if ($siswa['aktif'] == 1) { ?>
 
-                <td>
-                    <?= htmlspecialchars($data['alamat'] ?? '-'); ?>
-                </td>
+                                Aktif
 
-                <td>
-                    <?= htmlspecialchars($data['no_hp_ortu'] ?? '-'); ?>
-                </td>
+                            <?php } else { ?>
 
-                <td>
+                                Tidak Aktif
 
-                    <?php if ($data['aktif'] == 1) { ?>
+                            <?php } ?>
 
-                        Aktif
+                        </td>
 
-                    <?php } else { ?>
+                        <td>
 
-                        Tidak Aktif
+                            <a
+                                href="edit_siswa.php?id=<?= $siswa['id']; ?>"
+                                class="btn-edit"
+                            >
+                                Edit
+                            </a>
 
-                    <?php } ?>
+                            |
 
-                </td>
+                            <a
+                                href="siswa.php?hapus=<?= $siswa['id']; ?>"
+                                class="btn-hapus"
+                                onclick="return confirm('Yakin ingin menghapus data siswa ini?')"
+                            >
+                                Hapus
+                            </a>
 
-                <td>
+                        </td>
 
-                    <a href="edit_siswa.php?id=<?= $data['id']; ?>">
-                        Edit
-                    </a>
+                    </tr>
 
-                    |
+                <?php } ?>
 
-                    <a
-                        href="hapus_siswa.php?id=<?= $data['id']; ?>"
-                        onclick="return confirm('Yakin ingin menghapus siswa ini?');"
-                    >
-                        Hapus
-                    </a>
+                </tbody>
 
-                </td>
+            </table>
 
-            </tr>
-
-            <?php
-
-            }
-
-            ?>
-
-        </table>
+        </div>
 
     </div>
 
 </div>
+
+
+<!-- jQuery -->
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+
+<!-- DataTables JS -->
+
+<script src="https://cdn.datatables.net/2.3.4/js/dataTables.min.js"></script>
+
+
+<script>
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    new DataTable('#tabelSiswa');
+
+});
+
+</script>
+
 
 </body>
 

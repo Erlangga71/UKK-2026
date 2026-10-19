@@ -1,15 +1,26 @@
 <?php
 
-require_once "cek_role.php";
+session_start();
+
+if (!isset($_SESSION['login'])) {
+    header("Location: login.php");
+    exit;
+}
+
 include "database.php";
 
 $role = $_SESSION['role'] ?? '';
 
+/* =========================
+   DATA DASHBOARD
+========================= */
 
 // Total siswa aktif
 $query_siswa = mysqli_query(
     $koneksi,
-    "SELECT COUNT(*) AS total FROM siswa WHERE aktif = 1"
+    "SELECT COUNT(*) AS total
+     FROM siswa
+     WHERE aktif = 1"
 );
 
 $data_siswa = mysqli_fetch_assoc($query_siswa);
@@ -19,7 +30,8 @@ $total_siswa = $data_siswa['total'] ?? 0;
 // Total pelanggaran
 $query_pelanggaran = mysqli_query(
     $koneksi,
-    "SELECT COUNT(*) AS total FROM pelanggaran"
+    "SELECT COUNT(*) AS total
+     FROM pelanggaran"
 );
 
 $data_pelanggaran = mysqli_fetch_assoc($query_pelanggaran);
@@ -42,7 +54,7 @@ $data_bulan = mysqli_fetch_assoc($query_bulan);
 $pelanggaran_bulan = $data_bulan['total'] ?? 0;
 
 
-// Siswa yang mempunyai pelanggaran
+// Siswa bermasalah
 $query_bermasalah = mysqli_query(
     $koneksi,
     "SELECT COUNT(DISTINCT siswa_id) AS total
@@ -52,14 +64,46 @@ $query_bermasalah = mysqli_query(
 $data_bermasalah = mysqli_fetch_assoc($query_bermasalah);
 $siswa_bermasalah = $data_bermasalah['total'] ?? 0;
 
+
+/* =========================
+   PELANGGARAN TERBARU
+========================= */
+
+$query_terbaru = mysqli_query(
+    $koneksi,
+    "SELECT
+        p.id,
+        s.nama AS nama_siswa,
+        j.nama AS jenis_pelanggaran,
+        p.tanggal,
+        p.keterangan
+
+     FROM pelanggaran p
+
+     LEFT JOIN siswa s
+        ON p.siswa_id = s.id
+
+     LEFT JOIN jenis_pelanggaran j
+        ON p.jenis_id = j.id
+
+     ORDER BY p.id DESC
+
+     LIMIT 5"
+);
+
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="id">
 
 <head>
 
-    <title>Dashboard</title>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Dashboard - Pelanggaran Siswa</title>
 
     <style>
 
@@ -70,67 +114,117 @@ $siswa_bermasalah = $data_bermasalah['total'] ?? 0;
         body {
             margin: 0;
             font-family: Arial, sans-serif;
-            background: #F3F6F8;
+            background: #f4f6f8;
             color: #333;
         }
 
-
         /* =========================
-           HEADER
+           SIDEBAR
         ========================= */
 
-        .header {
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 220px;
+            height: 100vh;
             background: #687280;
+            padding: 20px 12px;
+            overflow-y: auto;
+        }
+
+        .sidebar-title {
             color: white;
-            padding: 18px 30px;
+            font-size: 19px;
+            font-weight: bold;
+            margin: 0 8px 25px;
+            line-height: 1.4;
         }
 
-        .header b {
-            font-size: 18px;
-        }
-
-        .logout {
-            float: right;
+        .sidebar a {
+            display: block;
+            padding: 11px 13px;
+            margin-bottom: 5px;
             color: white;
             text-decoration: none;
-            background: #B85C5C;
-            padding: 8px 14px;
-            border-radius: 4px;
+            border-radius: 5px;
+            font-size: 14px;
         }
 
-        .logout:hover {
-            background: #9F4D4D;
+        .sidebar a:hover {
+            background: #56606d;
         }
 
+        .sidebar a.active {
+            background: #4f5965;
+            font-weight: bold;
+        }
+
+        .sidebar .logout {
+            margin-top: 20px;
+            background: #b42323;
+        }
+
+        .sidebar .logout:hover {
+            background: #941d1d;
+        }
 
         /* =========================
-           CONTAINER
+           CONTENT
         ========================= */
 
-        .container {
-            width: 90%;
-            max-width: 1100px;
-            margin: 30px auto;
+        .content {
+            margin-left: 220px;
+            padding: 30px;
         }
 
+        .top-header {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 7px;
+            padding: 18px 22px;
+            margin-bottom: 25px;
+        }
+
+        .top-header h1 {
+            margin: 0;
+            font-size: 25px;
+            color: #333;
+        }
+
+        .top-header p {
+            margin: 7px 0 0;
+            color: #777;
+            font-size: 14px;
+        }
+
+        .user-info {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #555;
+        }
+
+        .user-info b {
+            color: #333;
+        }
 
         /* =========================
-           JUDUL
+           WELCOME
         ========================= */
 
-        .judul {
+        .welcome {
             margin-bottom: 20px;
         }
 
-        .judul h2 {
-            margin: 0 0 8px 0;
-            color: #4F6D7A;
+        .welcome h2 {
+            margin: 0;
+            font-size: 22px;
         }
 
-        .judul p {
-            margin: 6px 0;
+        .welcome p {
+            color: #777;
+            margin-top: 7px;
         }
-
 
         /* =========================
            STATISTIK
@@ -145,131 +239,147 @@ $siswa_bermasalah = $data_bermasalah['total'] ?? 0;
 
         .stat-box {
             background: white;
-            border: 1px solid #D9E0E5;
+            border: 1px solid #ddd;
+            border-radius: 7px;
             padding: 20px;
-            border-radius: 6px;
-            border-left: 5px solid #4F6D7A;
+            min-height: 120px;
         }
 
-        /* Siswa */
-
-        .stat-box:nth-child(1) {
-            border-left-color: #5B8C72;
+        .stat-icon {
+            font-size: 25px;
+            margin-bottom: 12px;
         }
 
-        /* Pelanggaran */
-
-        .stat-box:nth-child(2) {
-            border-left-color: #4F6D7A;
-        }
-
-        /* Bulan ini */
-
-        .stat-box:nth-child(3) {
-            border-left-color: #D5A84A;
-        }
-
-        /* Siswa bermasalah */
-
-        .stat-box:nth-child(4) {
-            border-left-color: #B85C5C;
-        }
-
-        .judul-stat {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 10px;
-        }
-
-        .angka {
-            font-size: 28px;
+        .stat-title {
+            font-size: 12px;
+            color: #777;
             font-weight: bold;
-            color: #4F6D7A;
+            margin-bottom: 7px;
         }
 
+        .stat-number {
+            font-size: 27px;
+            font-weight: bold;
+            color: #687280;
+        }
 
         /* =========================
-           BOX MENU
+           BOX
         ========================= */
 
         .box {
             background: white;
-            border: 1px solid #D9E0E5;
-            padding: 20px;
-            border-radius: 6px;
+            border: 1px solid #ddd;
+            border-radius: 7px;
+            padding: 22px;
+            margin-bottom: 20px;
         }
 
-        .box h3 {
-            margin-top: 0;
-            padding-bottom: 12px;
-            border-bottom: 2px solid #E5E7EB;
-            color: #4F6D7A;
+        .box-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 18px;
         }
 
+        .box-header h2 {
+            margin: 0;
+            font-size: 18px;
+        }
+
+        .box-header p {
+            margin: 5px 0 0;
+            font-size: 13px;
+            color: #777;
+        }
+
+        .lihat-semua {
+            text-decoration: none;
+            color: white;
+            background: #687280;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .lihat-semua:hover {
+            background: #56606d;
+        }
 
         /* =========================
-           MENU
+           TABLE
         ========================= */
 
-        .menu {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
+        .table-container {
+            overflow-x: auto;
         }
 
-        .menu a {
-            display: block;
-            text-decoration: none;
-            color: #333;
-            background: #F8FAFB;
-            border: 1px solid #D9E0E5;
-            padding: 15px;
-            border-radius: 5px;
-            transition: 0.2s;
+        table {
+            width: 100%;
+            border-collapse: collapse;
         }
 
-        .menu a:hover {
-            background: #E8F1F5;
-            border-color: #4F6D7A;
+        table th {
+            background: #687280;
+            color: white;
+            padding: 11px;
+            text-align: left;
+            font-size: 13px;
         }
 
-        .menu-nomor {
-            display: inline-block;
-            width: 30px;
-            font-weight: bold;
-            color: #4F6D7A;
+        table td {
+            padding: 11px;
+            border-bottom: 1px solid #ddd;
+            font-size: 13px;
+            vertical-align: top;
         }
 
-        .menu-nama {
-            font-weight: bold;
+        table tr:hover {
+            background: #f7f7f7;
         }
 
+        .kosong {
+            text-align: center;
+            color: #777;
+            padding: 25px;
+        }
 
         /* =========================
            RESPONSIVE
         ========================= */
 
-        @media (max-width: 800px) {
+        @media (max-width: 1000px) {
 
             .statistik {
-                grid-template-columns: 1fr 1fr;
-            }
-
-            .menu {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(2, 1fr);
             }
 
         }
 
+        @media (max-width: 700px) {
 
-        @media (max-width: 500px) {
+            .sidebar {
+                position: relative;
+                width: 100%;
+                height: auto;
+            }
+
+            .content {
+                margin-left: 0;
+                padding: 15px;
+            }
 
             .statistik {
                 grid-template-columns: 1fr;
             }
 
-            .container {
-                width: 94%;
+            .box-header {
+                display: block;
+            }
+
+            .lihat-semua {
+                display: inline-block;
+                margin-top: 10px;
             }
 
         }
@@ -281,72 +391,234 @@ $siswa_bermasalah = $data_bermasalah['total'] ?? 0;
 <body>
 
 
-<!-- =========================
-     HEADER
-========================= -->
+<!-- =====================================================
+     SIDEBAR
+===================================================== -->
 
-<div class="header">
+<div class="sidebar">
 
-    <b>SISTEM INFORMASI PELANGGARAN SISWA</b>
+    <div class="sidebar-title">
+         Pelanggaran<br>
+        Siswa
+    </div>
+
+
+    <!-- DASHBOARD -->
+
+    <a href="dashboard.php" class="active">
+        🏠 Dashboard
+    </a>
+
+
+    <?php if ($role == 'admin') { ?>
+
+        <!-- DATA SISWA -->
+
+        <a href="kelola_siswa.php">
+             Data Siswa
+        </a>
+
+
+        <!-- DATA GURU -->
+
+        <a href="kelola_guru.php">
+             Data Guru
+        </a>
+
+
+        <!-- DATA KELAS -->
+
+        <a href="kelola_kelas.php">
+             Data Kelas
+        </a>
+
+
+        <!-- TAHUN AJARAN -->
+
+        <a href="kelola_tahun_ajaran.php">
+             Tahun Ajaran
+        </a>
+
+
+        <!-- WALI KELAS -->
+
+        <a href="kelola_wali_kelas.php">
+             Wali Kelas
+        </a>
+
+
+        <!-- PENEMPATAN SISWA -->
+
+        <a href="penempatan_siswa.php">
+             Penempatan Siswa
+        </a>
+
+
+        <!-- KATEGORI -->
+
+        <a href="kelola_pelanggaran_kategori.php">
+            ⚠ Kategori Pelanggaran
+        </a>
+
+
+        <!-- PELANGGARAN -->
+
+        <a href="pelanggaran.php">
+             Data Pelanggaran
+        </a>
+
+
+        <!-- TINDAKAN -->
+
+        <a href="tindakan.php">
+         Data Tindakan
+        </a>
+
+
+        <!-- LAPORAN -->
+
+        <a href="laporan.php">
+             Laporan
+        </a>
+
+
+        <!-- ABOUT -->
+
+        <a href="about_me.php">
+            ℹ About Me
+        </a>
+
+    <?php } ?>
+
+
+    <?php if ($role == 'guru') { ?>
+
+        <a href="catat_pelanggaran.php">
+             Catat Pelanggaran
+        </a>
+
+        <a href="tindakan.php">
+             Tindakan
+        </a>
+
+        <a href="riwayat.php">
+             Riwayat
+        </a>
+
+        <a href="rekap_poin.php">
+             Rekap Poin
+        </a>
+
+    <?php } ?>
+
+
+    <?php if ($role == 'wali_kelas') { ?>
+
+        <a href="pelanggaran.php">
+             Data Pelanggaran
+        </a>
+
+        <a href="laporan.php">
+             Laporan
+        </a>
+
+    <?php } ?>
+
+
+    <!-- LOGOUT -->
 
     <a href="logout.php" class="logout">
-        Logout
+        🚪 Logout
     </a>
 
 </div>
 
 
-<div class="container">
+<!-- =====================================================
+     CONTENT
+===================================================== -->
+
+<div class="content">
 
 
-    <!-- =========================
-         INFORMASI USER
-    ========================= -->
+    <!-- HEADER -->
 
-    <div class="judul">
+    <div class="top-header">
 
-        <h2>Dashboard</h2>
+        <h1>
+            Sistem Informasi Pelanggaran Siswa
+        </h1>
 
         <p>
-            Selamat datang,
-            <b>
-                <?= htmlspecialchars($_SESSION['nama'] ?? 'Pengguna'); ?>
-            </b>
+            Dashboard Sistem
         </p>
 
-        <p>
+        <div class="user-info">
 
-            Username:
             <b>
-                <?= htmlspecialchars($_SESSION['username'] ?? '-'); ?>
+                <?= htmlspecialchars(
+                    $_SESSION['nama'] ?? 'Pengguna'
+                ); ?>
             </b>
 
-            &nbsp;&nbsp;
+            &nbsp; | &nbsp;
+
+            Username:
+
+            <b>
+                <?= htmlspecialchars(
+                    $_SESSION['username'] ?? '-'
+                ); ?>
+            </b>
+
+            &nbsp; | &nbsp;
 
             Role:
+
             <b>
                 <?= htmlspecialchars($role); ?>
             </b>
 
+        </div>
+
+    </div>
+
+
+    <!-- WELCOME -->
+
+    <div class="welcome">
+
+        <h2>
+            Selamat Datang,
+            <?= htmlspecialchars(
+                $_SESSION['nama'] ?? 'Pengguna'
+            ); ?>
+        </h2>
+
+        <p>
+            Kelola dan pantau data pelanggaran siswa
+            melalui sistem ini.
         </p>
 
     </div>
 
 
-    <!-- =========================
-         STATISTIK
-    ========================= -->
+    <!-- STATISTIK -->
 
     <div class="statistik">
 
 
         <div class="stat-box">
 
-            <div class="judul-stat">
-                Total Siswa Aktif
+            <div class="stat-icon">
+                👤
             </div>
 
-            <div class="angka">
+            <div class="stat-title">
+                TOTAL SISWA AKTIF
+            </div>
+
+            <div class="stat-number">
                 <?= $total_siswa; ?>
             </div>
 
@@ -355,11 +627,15 @@ $siswa_bermasalah = $data_bermasalah['total'] ?? 0;
 
         <div class="stat-box">
 
-            <div class="judul-stat">
-                Total Pelanggaran
+            <div class="stat-icon">
+                ⚖
             </div>
 
-            <div class="angka">
+            <div class="stat-title">
+                TOTAL PELANGGARAN
+            </div>
+
+            <div class="stat-number">
                 <?= $total_pelanggaran; ?>
             </div>
 
@@ -368,11 +644,15 @@ $siswa_bermasalah = $data_bermasalah['total'] ?? 0;
 
         <div class="stat-box">
 
-            <div class="judul-stat">
-                Pelanggaran Bulan Ini
+            <div class="stat-icon">
+                📅
             </div>
 
-            <div class="angka">
+            <div class="stat-title">
+                PELANGGARAN BULAN INI
+            </div>
+
+            <div class="stat-number">
                 <?= $pelanggaran_bulan; ?>
             </div>
 
@@ -381,11 +661,15 @@ $siswa_bermasalah = $data_bermasalah['total'] ?? 0;
 
         <div class="stat-box">
 
-            <div class="judul-stat">
-                Siswa Bermasalah
+            <div class="stat-icon">
+                !
             </div>
 
-            <div class="angka">
+            <div class="stat-title">
+                SISWA BERMASALAH
+            </div>
+
+            <div class="stat-number">
                 <?= $siswa_bermasalah; ?>
             </div>
 
@@ -395,281 +679,143 @@ $siswa_bermasalah = $data_bermasalah['total'] ?? 0;
     </div>
 
 
-    <!-- =========================
-         MENU ADMIN
-    ========================= -->
-
-    <?php if ($role == 'admin') { ?>
+    <!-- INFORMASI PELANGGARAN -->
 
     <div class="box">
 
-        <h3>Menu Sistem</h3>
+        <div class="box-header">
 
-        <div class="menu">
+            <div>
 
+                <h2>
+                    Informasi Pelanggaran
+                </h2>
 
-            <a href="siswa.php">
+                <p>
+                    Daftar pelanggaran siswa terbaru
+                </p>
 
-                <span class="menu-nomor">
-                    1.
-                </span>
+            </div>
 
-                <span class="menu-nama">
-                    Data Siswa
-                </span>
-
+            <a href="pelanggaran.php" class="lihat-semua">
+                Lihat Semua
             </a>
 
-
-            <a href="guru.php">
-
-                <span class="menu-nomor">
-                    2.
-                </span>
-
-                <span class="menu-nama">
-                    Data Guru
-                </span>
-
-            </a>
+        </div>
 
 
-            <a href="kelas.php">
+        <div class="table-container">
 
-                <span class="menu-nomor">
-                    3.
-                </span>
+            <table>
 
-                <span class="menu-nama">
-                    Data Kelas
-                </span>
+                <thead>
 
-            </a>
+                    <tr>
 
+                        <th>No</th>
 
-            <a href="tahun_ajaran.php">
+                        <th>Nama Siswa</th>
 
-                <span class="menu-nomor">
-                    4.
-                </span>
+                        <th>Jenis Pelanggaran</th>
 
-                <span class="menu-nama">
-                    Tahun Ajaran
-                </span>
+                        <th>Tanggal</th>
 
-            </a>
+                        <th>Keterangan</th>
+
+                    </tr>
+
+                </thead>
 
 
-            <a href="wali_kelas.php">
+                <tbody>
 
-                <span class="menu-nomor">
-                    5.
-                </span>
+                <?php
 
-                <span class="menu-nama">
-                    Wali Kelas
-                </span>
+                $no = 1;
 
-            </a>
+                if (
+                    $query_terbaru &&
+                    mysqli_num_rows($query_terbaru) > 0
+                ) {
 
+                    while (
+                        $row = mysqli_fetch_assoc(
+                            $query_terbaru
+                        )
+                    ) {
 
-            <a href="penempatan_siswa.php">
+                ?>
 
-                <span class="menu-nomor">
-                    6.
-                </span>
+                    <tr>
 
-                <span class="menu-nama">
-                    Penempatan Siswa
-                </span>
+                        <td>
+                            <?= $no++; ?>
+                        </td>
 
-            </a>
+                        <td>
+                            <b>
+                                <?= htmlspecialchars(
+                                    $row['nama_siswa'] ?? '-'
+                                ); ?>
+                            </b>
+                        </td>
 
+                        <td>
+                            <?= htmlspecialchars(
+                                $row['jenis_pelanggaran'] ?? '-'
+                            ); ?>
+                        </td>
 
-            <a href="pelanggaran.php">
+                        <td>
+                            <?= htmlspecialchars(
+                                $row['tanggal'] ?? '-'
+                            ); ?>
+                        </td>
 
-                <span class="menu-nomor">
-                    7.
-                </span>
+                        <td>
+                            <?= htmlspecialchars(
+                                $row['keterangan'] ?? '-'
+                            ); ?>
+                        </td>
 
-                <span class="menu-nama">
-                    Data Pelanggaran
-                </span>
+                    </tr>
 
-            </a>
+                <?php
 
+                    }
 
-            <a href="tindakan.php">
+                } else {
 
-                <span class="menu-nomor">
-                    8.
-                </span>
+                ?>
 
-                <span class="menu-nama">
-                    Data Tindakan
-                </span>
+                    <tr>
 
-            </a>
+                        <td
+                            colspan="5"
+                            class="kosong"
+                        >
+                            Belum ada data pelanggaran.
+                        </td>
 
+                    </tr>
 
-            <a href="laporan.php">
+                <?php
 
-                <span class="menu-nomor">
-                    9.
-                </span>
+                }
 
-                <span class="menu-nama">
-                    Laporan
-                </span>
+                ?>
 
-            </a>
+                </tbody>
 
+            </table>
 
         </div>
 
     </div>
-
-    <?php } ?>
-
-
-    <!-- =========================
-         MENU GURU
-    ========================= -->
-
-    <?php if ($role == 'guru') { ?>
-
-    <div class="box">
-
-        <h3>Menu Sistem</h3>
-
-        <div class="menu">
-
-
-            <a href="pelanggaran.php">
-
-                <span class="menu-nomor">
-                    1.
-                </span>
-
-                <span class="menu-nama">
-                    Data Pelanggaran
-                </span>
-
-            </a>
-
-
-            <a href="tindakan.php">
-
-                <span class="menu-nomor">
-                    2.
-                </span>
-
-                <span class="menu-nama">
-                    Data Tindakan
-                </span>
-
-            </a>
-
-
-            <a href="riwayat.php">
-
-                <span class="menu-nomor">
-                    3.
-                </span>
-
-                <span class="menu-nama">
-                    Riwayat Pelanggaran
-                </span>
-
-            </a>
-
-
-            <a href="rekap_poin.php">
-
-                <span class="menu-nomor">
-                    4.
-                </span>
-
-                <span class="menu-nama">
-                    Rekap Poin
-                </span>
-
-            </a>
-
-
-        </div>
-
-    </div>
-
-    <?php } ?>
-
-
-    <!-- =========================
-         MENU WALI KELAS
-    ========================= -->
-
-    <?php if ($role == 'wali_kelas') { ?>
-
-    <div class="box">
-
-        <h3>Menu Sistem</h3>
-
-        <div class="menu">
-
-
-            <a href="pelanggaran.php">
-
-                <span class="menu-nomor">
-                    1.
-                </span>
-
-                <span class="menu-nama">
-                    Data Pelanggaran
-                </span>
-
-            </a>
-
-
-            <a href="laporan.php">
-
-                <span class="menu-nomor">
-                    2.
-                </span>
-
-                <span class="menu-nama">
-                    Laporan
-                </span>
-
-            </a>
-
-
-        </div>
-
-    </div>
-
-    <?php } ?>
-
-
-    <!-- ROLE TIDAK DIKENALI -->
-
-    <?php if (
-        $role != 'admin' &&
-        $role != 'guru' &&
-        $role != 'wali_kelas'
-    ) { ?>
-
-        <div class="box">
-
-            <b>
-                Role tidak dikenali.
-            </b>
-
-        </div>
-
-    <?php } ?>
 
 
 </div>
+
 
 </body>
 

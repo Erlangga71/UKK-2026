@@ -6,22 +6,27 @@ wajib_role(['admin', 'guru', 'wali_kelas']);
 
 include "database.php";
 
+/*
+|--------------------------------------------------------------------------
+| AMBIL DATA LAPORAN
+|--------------------------------------------------------------------------
+*/
+
 $query = mysqli_query($koneksi, "
+
     SELECT
         pelanggaran.id,
         siswa.nama AS nama_siswa,
+        kelas.nama_kelas,
         jenis_pelanggaran.nama AS jenis_pelanggaran,
         jenis_pelanggaran.poin,
         pelanggaran.tanggal,
-        pelanggaran.status,
-        kelas.nama_kelas
+        pelanggaran.status
+
     FROM pelanggaran
 
     JOIN siswa
         ON pelanggaran.siswa_id = siswa.id
-
-    JOIN jenis_pelanggaran
-        ON pelanggaran.jenis_id = jenis_pelanggaran.id
 
     LEFT JOIN penempatan_siswa
         ON siswa.id = penempatan_siswa.siswa_id
@@ -29,79 +34,221 @@ $query = mysqli_query($koneksi, "
     LEFT JOIN kelas
         ON penempatan_siswa.kelas_id = kelas.id
 
-    ORDER BY pelanggaran.tanggal DESC
+    JOIN jenis_pelanggaran
+        ON pelanggaran.jenis_id = jenis_pelanggaran.id
+
+    ORDER BY pelanggaran.tanggal DESC, pelanggaran.id DESC
+
 ");
+
+if (!$query) {
+    die("Query error: " . mysqli_error($koneksi));
+}
 
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="id">
 
 <head>
 
-    <title>Laporan Pelanggaran</title>
+    <meta charset="UTF-8">
 
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Laporan Pelanggaran Siswa</title>
 
     <style>
 
-        .judul-laporan {
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            color: #333;
+        }
+
+        .header {
+            background: #687280;
+            color: white;
+            padding: 15px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header a {
+            color: white;
+            text-decoration: none;
+            background: #56606d;
+            padding: 8px 14px;
+            border-radius: 4px;
+        }
+
+        .container {
+            margin-left: 220px;
+            padding: 30px;
+        }
+
+        .box {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 7px;
+            padding: 25px;
+        }
+
+        .judul {
             text-align: center;
             margin-bottom: 25px;
         }
 
-        .judul-laporan h2 {
-            margin-bottom: 5px;
-            color: #086177;
+        .judul h1 {
+            margin: 0;
+            font-size: 22px;
         }
 
-        .judul-laporan p {
-            margin: 3px;
+        .judul h2 {
+            margin: 8px 0;
+            font-size: 18px;
         }
 
-        .tanggal-cetak {
-            text-align: right;
+        .judul p {
+            margin: 5px 0;
+            color: #666;
+        }
+
+        .atas {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 15px;
         }
 
-        .tombol {
-            margin-bottom: 20px;
+        .atas h2 {
+            margin: 0;
+            font-size: 19px;
+        }
+
+        .btn {
+            display: inline-block;
+            background: #687280;
+            color: white;
+            text-decoration: none;
+            border: none;
+            padding: 9px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .btn:hover {
+            background: #56606d;
+        }
+
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #687280;
+            color: white;
+            padding: 11px;
+            text-align: left;
+            font-size: 13px;
+        }
+
+        td {
+            padding: 11px;
+            border-bottom: 1px solid #ddd;
+            font-size: 13px;
+        }
+
+        tr:hover {
+            background: #f7f7f7;
+        }
+
+        .kosong {
+            text-align: center;
+            padding: 25px;
+            color: #777;
+        }
+
+        .ttd {
+            margin-top: 60px;
+            text-align: right;
+            padding-right: 60px;
+        }
+
+        .ttd p {
+            margin: 5px;
+        }
+
+        @media (max-width: 700px) {
+
+            .container {
+                margin-left: 0;
+                padding: 15px;
+            }
+
+            .header {
+                display: block;
+            }
+
+            .header a {
+                display: inline-block;
+                margin-top: 10px;
+            }
+
+            .atas {
+                display: block;
+            }
+
+            .atas .btn {
+                margin-top: 10px;
+            }
+
+            .ttd {
+                padding-right: 10px;
+            }
+
         }
 
         @media print {
-
-            .header {
-                display: none;
-            }
-
-            .tombol {
-                display: none;
-            }
 
             body {
                 background: white;
             }
 
+            .header {
+                display: none;
+            }
+
             .container {
-                width: 100%;
-                max-width: none;
-                margin: 0;
+                margin-left: 0;
+                padding: 0;
             }
 
             .box {
-                box-shadow: none;
                 border: none;
+                padding: 0;
             }
 
-            table {
-                width: 100%;
-                border-collapse: collapse;
+            .btn {
+                display: none;
             }
 
-            th,
-            td {
-                border: 1px solid #000;
-                padding: 8px;
+            table th {
+                background: #ddd !important;
+                color: black;
             }
 
         }
@@ -112,147 +259,205 @@ $query = mysqli_query($koneksi, "
 
 <body>
 
+
+<!-- HEADER -->
+
 <div class="header">
 
-    <b>SISTEM INFORMASI PELANGGARAN SISWA</b>
+    <b>
+        SISTEM INFORMASI PELANGGARAN SISWA
+    </b>
 
     <a href="dashboard.php">
-        Kembali
+        ← Kembali
     </a>
 
 </div>
 
 
+<!-- CONTENT -->
+
 <div class="container">
 
     <div class="box">
 
-        <div class="tombol">
 
-            <button
-                onclick="window.print()"
-                class="btn"
-            >
-                Cetak Laporan
-            </button>
+        <!-- JUDUL LAPORAN -->
 
-        </div>
+        <div class="judul">
 
-
-        <div class="judul-laporan">
+            <h1>
+                LAPORAN PELANGGARAN SISWA
+            </h1>
 
             <h2>
-                LAPORAN PELANGGARAN SISWA
-            </h2>
-
-            <p>
                 SISTEM INFORMASI PELANGGARAN SISWA
-            </p>
+            </h2>
 
             <p>
                 SMK
             </p>
 
-        </div>
-
-
-        <div class="tanggal-cetak">
-
-            Tanggal Cetak:
-            <?= date('d-m-Y'); ?>
+            <p>
+                Tanggal Cetak:
+                <?= date('d-m-Y'); ?>
+            </p>
 
         </div>
 
 
-        <table>
+        <!-- TOMBOL -->
 
-            <tr>
+        <div class="atas">
 
-                <th>No</th>
+            <h2>
+                Data Pelanggaran
+            </h2>
 
-                <th>Nama Siswa</th>
-
-                <th>Kelas</th>
-
-                <th>Jenis Pelanggaran</th>
-
-                <th>Poin</th>
-
-                <th>Tanggal</th>
-
-                <th>Status</th>
-
-            </tr>
-
-
-            <?php
-
-            $no = 1;
-
-            while ($data = mysqli_fetch_assoc($query)) {
-
-            ?>
-
-            <tr>
-
-                <td>
-                    <?= $no++; ?>
-                </td>
-
-                <td>
-                    <?= htmlspecialchars($data['nama_siswa']); ?>
-                </td>
-
-                <td>
-                    <?= htmlspecialchars($data['nama_kelas'] ?? '-'); ?>
-                </td>
-
-                <td>
-                    <?= htmlspecialchars($data['jenis_pelanggaran']); ?>
-                </td>
-
-                <td>
-                    <?= htmlspecialchars($data['poin']); ?>
-                </td>
-
-                <td>
-                    <?= date(
-                        'd-m-Y',
-                        strtotime($data['tanggal'])
-                    ); ?>
-                </td>
-
-                <td>
-                    <?= htmlspecialchars($data['status']); ?>
-                </td>
-
-            </tr>
-
-            <?php } ?>
-
-        </table>
-
-
-        <br><br>
-
-
-        <div style="text-align:right;">
-
-            Mengetahui,
-
-            <br><br><br><br>
-
-            __________________________
-
-            <br>
-
-            Petugas / Admin
+            <button
+                onclick="window.print()"
+                class="btn"
+            >
+                🖨 Cetak Laporan
+            </button>
 
         </div>
+
+
+        <!-- TABEL -->
+
+        <div class="table-container">
+
+            <table>
+
+                <tr>
+
+                    <th>No</th>
+
+                    <th>Nama Siswa</th>
+
+                    <th>Kelas</th>
+
+                    <th>Jenis Pelanggaran</th>
+
+                    <th>Poin</th>
+
+                    <th>Tanggal</th>
+
+                    <th>Status</th>
+
+                </tr>
+
+
+                <?php
+
+                $no = 1;
+
+                if (mysqli_num_rows($query) > 0) {
+
+                    while ($data = mysqli_fetch_assoc($query)) {
+
+                ?>
+
+                    <tr>
+
+                        <td>
+                            <?= $no++; ?>
+                        </td>
+
+                        <td>
+                            <?= htmlspecialchars(
+                                $data['nama_siswa'] ?? '-'
+                            ); ?>
+                        </td>
+
+                        <td>
+                            <?= htmlspecialchars(
+                                $data['nama_kelas'] ?? '-'
+                            ); ?>
+                        </td>
+
+                        <td>
+                            <?= htmlspecialchars(
+                                $data['jenis_pelanggaran'] ?? '-'
+                            ); ?>
+                        </td>
+
+                        <td>
+                            <?= htmlspecialchars(
+                                $data['poin'] ?? '0'
+                            ); ?>
+                        </td>
+
+                        <td>
+                            <?= !empty($data['tanggal'])
+                                ? date(
+                                    'd-m-Y',
+                                    strtotime($data['tanggal'])
+                                )
+                                : '-';
+                            ?>
+                        </td>
+
+                        <td>
+                            <?= htmlspecialchars(
+                                $data['status'] ?? '-'
+                            ); ?>
+                        </td>
+
+                    </tr>
+
+                <?php
+
+                    }
+
+                } else {
+
+                ?>
+
+                    <tr>
+
+                        <td
+                            colspan="7"
+                            class="kosong"
+                        >
+                            Belum ada data pelanggaran.
+                        </td>
+
+                    </tr>
+
+                <?php
+
+                }
+
+                ?>
+
+            </table>
+
+        </div>
+
+
+        <!-- TANDA TANGAN -->
+
+        <div class="ttd">
+
+            <p>
+                Mengetahui,
+            </p>
+
+            <br><br><br>
+
+            <p>
+                __________________________
+            </p>
+
+        </div>
+
 
     </div>
 
 </div>
+
 
 </body>
 

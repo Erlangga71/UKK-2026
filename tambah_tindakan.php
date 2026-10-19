@@ -1,24 +1,83 @@
 <?php
 
-session_start();
+require_once "cek_role.php";
 
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
-}
+wajib_role(['admin', 'guru']);
 
 include "database.php";
 
 
-// =====================================
-// DATA PELANGGARAN
-// =====================================
+// =========================
+// PROSES SIMPAN
+// =========================
 
-$pelanggaran = mysqli_query($koneksi, "
+if (isset($_POST['simpan'])) {
+
+    $pelanggaran_id = $_POST['pelanggaran_id'];
+    $tanggal        = $_POST['tanggal'];
+    $tindakan       = $_POST['tindakan'];
+    $petugas_id     = !empty($_POST['petugas_id'])
+                        ? $_POST['petugas_id']
+                        : NULL;
+    $catatan        = $_POST['catatan'];
+
+
+    // Simpan menggunakan prepared statement
+
+    $stmt = mysqli_prepare($koneksi, "
+
+        INSERT INTO tindakan
+        (
+            pelanggaran_id,
+            tanggal,
+            tindakan,
+            petugas_id,
+            catatan
+        )
+        VALUES (?, ?, ?, ?, ?)
+
+    ");
+
+
+    mysqli_stmt_bind_param(
+        $stmt,
+        "issis",
+        $pelanggaran_id,
+        $tanggal,
+        $tindakan,
+        $petugas_id,
+        $catatan
+    );
+
+
+    if (mysqli_stmt_execute($stmt)) {
+
+        header("Location: tindakan.php");
+
+        exit;
+
+    } else {
+
+        $error = mysqli_stmt_error($stmt);
+
+    }
+
+}
+
+
+// =========================
+// DATA PELANGGARAN
+// =========================
+
+$query_pelanggaran = mysqli_query($koneksi, "
+
     SELECT
         pelanggaran.id,
+
         siswa.nama AS nama_siswa,
-        jenis_pelanggaran.nama AS jenis
+
+        jenis_pelanggaran.nama AS jenis_pelanggaran
+
     FROM pelanggaran
 
     JOIN siswa
@@ -28,100 +87,349 @@ $pelanggaran = mysqli_query($koneksi, "
         ON pelanggaran.jenis_id = jenis_pelanggaran.id
 
     ORDER BY pelanggaran.id DESC
+
 ");
 
 
-// =====================================
+// =========================
 // DATA PETUGAS
-// =====================================
+// =========================
 
-$petugas = mysqli_query($koneksi, "
-    SELECT id, nama, username
+$query_petugas = mysqli_query($koneksi, "
+
+    SELECT
+        id,
+        nama,
+        username
+
     FROM users
+
     WHERE aktif = 1
+
     ORDER BY nama ASC
+
 ");
-
-
-// =====================================
-// SIMPAN DATA
-// =====================================
-
-if (isset($_POST['simpan'])) {
-
-    $pelanggaran_id = (int) $_POST['pelanggaran_id'];
-
-    $tanggal = mysqli_real_escape_string(
-        $koneksi,
-        $_POST['tanggal']
-    );
-
-    $tindakan = mysqli_real_escape_string(
-        $koneksi,
-        $_POST['tindakan']
-    );
-
-    $catatan = mysqli_real_escape_string(
-        $koneksi,
-        $_POST['catatan']
-    );
-
-
-    // Kalau petugas tidak dipilih, isi NULL
-    if (!empty($_POST['petugas_id'])) {
-
-        $petugas_id = (int) $_POST['petugas_id'];
-
-    } else {
-
-        $petugas_id = "NULL";
-
-    }
-
-
-    $query = mysqli_query($koneksi, "
-        INSERT INTO tindakan
-        (
-            pelanggaran_id,
-            tanggal,
-            tindakan,
-            petugas_id,
-            catatan
-        )
-        VALUES
-        (
-            '$pelanggaran_id',
-            '$tanggal',
-            '$tindakan',
-            $petugas_id,
-            '$catatan'
-        )
-    ");
-
-
-    if ($query) {
-
-        header("Location: tindakan.php");
-        exit;
-
-    } else {
-
-        $error = mysqli_error($koneksi);
-
-    }
-
-}
 
 ?>
 
 <!DOCTYPE html>
-<html>
+
+<html lang="id">
 
 <head>
 
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
     <title>Tambah Tindakan</title>
 
-    <link rel="stylesheet" href="style.css">
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+
+        body {
+
+            margin: 0;
+
+            font-family: Arial, sans-serif;
+
+            background: #f4f6f8;
+
+            color: #333;
+
+        }
+
+
+        /* =========================
+           HEADER
+        ========================= */
+
+        .header {
+
+            background: #687280;
+
+            color: white;
+
+            padding: 18px 30px;
+
+            display: flex;
+
+            justify-content: space-between;
+
+            align-items: center;
+
+        }
+
+
+        .header b {
+
+            font-size: 18px;
+
+        }
+
+
+        .header a {
+
+            color: white;
+
+            text-decoration: none;
+
+            background: #56606d;
+
+            padding: 8px 14px;
+
+            border-radius: 4px;
+
+            font-size: 13px;
+
+        }
+
+
+        .header a:hover {
+
+            background: #454e59;
+
+        }
+
+
+        /* =========================
+           CONTAINER
+        ========================= */
+
+        .container {
+
+            width: 95%;
+
+            max-width: 900px;
+
+            margin: 30px auto;
+
+        }
+
+
+        /* =========================
+           BOX
+        ========================= */
+
+        .box {
+
+            background: white;
+
+            border: 1px solid #ddd;
+
+            border-radius: 6px;
+
+            padding: 25px;
+
+        }
+
+
+        .box h2 {
+
+            margin-top: 0;
+
+            margin-bottom: 25px;
+
+            font-size: 22px;
+
+        }
+
+
+        /* =========================
+           FORM
+        ========================= */
+
+        .form-group {
+
+            margin-bottom: 18px;
+
+        }
+
+
+        .form-group label {
+
+            display: block;
+
+            margin-bottom: 7px;
+
+            font-weight: bold;
+
+            font-size: 14px;
+
+        }
+
+
+        input,
+        select,
+        textarea {
+
+            width: 100%;
+
+            padding: 10px;
+
+            border: 1px solid #ccc;
+
+            border-radius: 4px;
+
+            font-family: Arial, sans-serif;
+
+            font-size: 14px;
+
+            background: white;
+
+        }
+
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+
+            outline: none;
+
+            border-color: #687280;
+
+        }
+
+
+        textarea {
+
+            min-height: 100px;
+
+            resize: vertical;
+
+        }
+
+
+        /* =========================
+           BUTTON
+        ========================= */
+
+        .form-button {
+
+            margin-top: 10px;
+
+        }
+
+
+        .btn-simpan {
+
+            border: none;
+
+            background: #687280;
+
+            color: white;
+
+            padding: 10px 18px;
+
+            border-radius: 4px;
+
+            cursor: pointer;
+
+            font-size: 14px;
+
+        }
+
+
+        .btn-simpan:hover {
+
+            background: #56606d;
+
+        }
+
+
+        .btn-batal {
+
+            display: inline-block;
+
+            margin-left: 8px;
+
+            background: #ddd;
+
+            color: #333;
+
+            text-decoration: none;
+
+            padding: 9px 16px;
+
+            border-radius: 4px;
+
+            font-size: 14px;
+
+        }
+
+
+        .btn-batal:hover {
+
+            background: #ccc;
+
+        }
+
+
+        /* =========================
+           ERROR
+        ========================= */
+
+        .error {
+
+            background: #f8d7da;
+
+            color: #842029;
+
+            border: 1px solid #f1aeb5;
+
+            padding: 10px;
+
+            margin-bottom: 20px;
+
+            border-radius: 4px;
+
+        }
+
+
+        /* =========================
+           RESPONSIVE
+        ========================= */
+
+        @media (max-width: 700px) {
+
+            .header {
+
+                padding: 15px;
+
+            }
+
+
+            .header b {
+
+                font-size: 14px;
+
+            }
+
+
+            .container {
+
+                width: 96%;
+
+                margin: 20px auto;
+
+            }
+
+
+            .box {
+
+                padding: 18px;
+
+            }
+
+        }
+
+    </style>
 
 </head>
 
@@ -129,31 +437,48 @@ if (isset($_POST['simpan'])) {
 <body>
 
 
+<!-- =========================
+     HEADER
+========================= -->
+
 <div class="header">
 
     <b>
         SISTEM INFORMASI PELANGGARAN SISWA
     </b>
 
+
     <a href="tindakan.php">
-        Kembali
+        ← Kembali
     </a>
 
 </div>
 
 
+
+<!-- =========================
+     CONTENT
+========================= -->
+
 <div class="container">
+
 
     <div class="box">
 
-        <h2>Tambah Tindakan</h2>
+
+        <h2>
+            Tambah Tindakan
+        </h2>
 
 
         <?php if (isset($error)) { ?>
 
-            <p style="color:red;">
+            <div class="error">
+
+                Gagal menyimpan data:
                 <?= htmlspecialchars($error); ?>
-            </p>
+
+            </div>
 
         <?php } ?>
 
@@ -163,138 +488,195 @@ if (isset($_POST['simpan'])) {
 
             <!-- PELANGGARAN -->
 
-            <label>
-                Pelanggaran Siswa
-            </label>
+            <div class="form-group">
 
-            <br><br>
+                <label>
+                    Pelanggaran Siswa
+                </label>
 
-            <select name="pelanggaran_id" required>
 
-                <option value="">
-                    -- Pilih Pelanggaran --
-                </option>
+                <select
+                    name="pelanggaran_id"
+                    required
+                >
 
-                <?php while ($data = mysqli_fetch_assoc($pelanggaran)) { ?>
-
-                    <option value="<?= $data['id']; ?>">
-
-                        <?= htmlspecialchars($data['nama_siswa']); ?>
-
-                        -
-                        <?= htmlspecialchars($data['jenis']); ?>
-
+                    <option value="">
+                        -- Pilih Pelanggaran --
                     </option>
 
-                <?php } ?>
 
-            </select>
+                    <?php
 
+                    while (
+                        $pel = mysqli_fetch_assoc(
+                            $query_pelanggaran
+                        )
+                    ) {
 
-            <br><br>
+                    ?>
+
+                        <option
+                            value="<?= $pel['id']; ?>"
+                        >
+
+                            <?= htmlspecialchars(
+                                $pel['nama_siswa']
+                            ); ?>
+
+                            -
+                            
+                            <?= htmlspecialchars(
+                                $pel['jenis_pelanggaran']
+                            ); ?>
+
+                        </option>
+
+                    <?php } ?>
+
+                </select>
+
+            </div>
+
 
 
             <!-- TANGGAL -->
 
-            <label>
-                Tanggal
-            </label>
+            <div class="form-group">
 
-            <br><br>
-
-            <input
-                type="date"
-                name="tanggal"
-                value="<?= date('Y-m-d'); ?>"
-                required
-            >
+                <label>
+                    Tanggal
+                </label>
 
 
-            <br><br>
+                <input
+                    type="date"
+                    name="tanggal"
+                    value="<?= date('Y-m-d'); ?>"
+                    required
+                >
+
+            </div>
+
 
 
             <!-- TINDAKAN -->
 
-            <label>
-                Tindakan
-            </label>
+            <div class="form-group">
 
-            <br><br>
-
-            <textarea
-                name="tindakan"
-                rows="4"
-                placeholder="Masukkan tindakan yang diberikan..."
-                required
-            ></textarea>
+                <label>
+                    Tindakan
+                </label>
 
 
-            <br><br>
+                <input
+                    type="text"
+                    name="tindakan"
+                    placeholder="Masukkan tindakan"
+                    required
+                >
+
+            </div>
+
 
 
             <!-- PETUGAS -->
 
-            <label>
-                Petugas
-            </label>
+            <div class="form-group">
 
-            <br><br>
+                <label>
+                    Petugas
+                </label>
 
-            <select name="petugas_id">
 
-                <option value="">
-                    -- Tidak Dipilih --
-                </option>
+                <select
+                    name="petugas_id"
+                >
 
-                <?php while ($data = mysqli_fetch_assoc($petugas)) { ?>
-
-                    <option value="<?= $data['id']; ?>">
-
-                        <?= htmlspecialchars($data['nama']); ?>
-
-                        -
-                        <?= htmlspecialchars($data['username']); ?>
-
+                    <option value="">
+                        -- Tidak Dipilih --
                     </option>
 
-                <?php } ?>
 
-            </select>
+                    <?php
 
+                    while (
+                        $petugas = mysqli_fetch_assoc(
+                            $query_petugas
+                        )
+                    ) {
 
-            <br><br>
+                    ?>
+
+                        <option
+                            value="<?= $petugas['id']; ?>"
+                        >
+
+                            <?= htmlspecialchars(
+                                $petugas['nama']
+                            ); ?>
+
+                            -
+                            
+                            <?= htmlspecialchars(
+                                $petugas['username']
+                            ); ?>
+
+                        </option>
+
+                    <?php } ?>
+
+                </select>
+
+            </div>
+
 
 
             <!-- CATATAN -->
 
-            <label>
-                Catatan
-            </label>
+            <div class="form-group">
 
-            <br><br>
-
-            <textarea
-                name="catatan"
-                rows="4"
-                placeholder="Catatan tambahan..."
-            ></textarea>
+                <label>
+                    Catatan
+                </label>
 
 
-            <br><br>
+                <textarea
+                    name="catatan"
+                    placeholder="Masukkan catatan jika diperlukan"
+                ></textarea>
+
+            </div>
 
 
-            <button
-                type="submit"
-                name="simpan"
-                class="btn"
-            >
-                Simpan
-            </button>
+
+            <!-- BUTTON -->
+
+            <div class="form-button">
+
+                <button
+                    type="submit"
+                    name="simpan"
+                    class="btn-simpan"
+                >
+                    Simpan
+                </button>
+
+
+                <a
+                    href="tindakan.php"
+                    class="btn-batal"
+                >
+                    Batal
+                </a>
+
+            </div>
 
 
         </form>
 
+
     </div>
+
 
 </div>
 
