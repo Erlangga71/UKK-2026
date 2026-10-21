@@ -439,19 +439,15 @@ if (!$query) {
 
         <!-- TANDA TANGAN -->
 
-        <div class="ttd">
+      <div class="ttd">
+    <div>Mengetahui,</div>
+    <div>Kepala Sekolah</div>
 
-            <p>
-                Mengetahui,
-            </p>
+    <br><br><br>
 
-            <br><br><br>
-
-            <p>
-                __________________________
-            </p>
-
-        </div>
+    <strong>Drs. H. Wawan Kurniawan, M.Pd.</strong><br>
+    <strong>NIP. 19650101 199003 1 005</strong>
+</div>
 
 
     </div>

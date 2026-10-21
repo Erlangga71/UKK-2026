@@ -11,416 +11,710 @@ include "database.php";
 
 $role = $_SESSION['role'] ?? '';
 
-/* =====================================================
+/* =========================
+   CEK ADMIN
+========================= */
+
+if ($role != 'admin') {
+    echo "Akses ditolak.";
+    exit;
+}
+
+
+/* =========================
+   TAMBAH WALI KELAS
+========================= */
+
+if (isset($_POST['simpan'])) {
+
+    $guru_id = intval($_POST['guru_id'] ?? 0);
+    $kelas_id = intval($_POST['kelas_id'] ?? 0);
+    $tahun_ajaran_id = intval($_POST['tahun_ajaran_id'] ?? 0);
+
+    if (
+        $guru_id <= 0 ||
+        $kelas_id <= 0 ||
+        $tahun_ajaran_id <= 0
+    ) {
+
+        $error = "Guru, kelas, dan tahun ajaran wajib dipilih.";
+
+    } else {
+
+        /* =========================
+           CEK DATA GURU
+        ========================= */
+
+        $cek_guru = mysqli_query(
+            $koneksi,
+            "SELECT id
+             FROM guru
+             WHERE id = $guru_id
+             LIMIT 1"
+        );
+
+
+        /* =========================
+           CEK DATA KELAS
+        ========================= */
+
+        $cek_kelas = mysqli_query(
+            $koneksi,
+            "SELECT id
+             FROM kelas
+             WHERE id = $kelas_id
+             LIMIT 1"
+        );
+
+
+        /* =========================
+           CEK TAHUN AJARAN
+        ========================= */
+
+        $cek_tahun = mysqli_query(
+            $koneksi,
+            "SELECT id
+             FROM tahun_ajaran
+             WHERE id = $tahun_ajaran_id
+             LIMIT 1"
+        );
+
+
+        if (
+            mysqli_num_rows($cek_guru) == 0 ||
+            mysqli_num_rows($cek_kelas) == 0 ||
+            mysqli_num_rows($cek_tahun) == 0
+        ) {
+
+            $error = "Data guru, kelas, atau tahun ajaran tidak valid.";
+
+        } else {
+
+            /* =========================
+               CEK WALI KELAS SUDAH ADA
+            ========================= */
+
+            $cek = mysqli_query(
+                $koneksi,
+                "SELECT id
+                 FROM wali_kelas
+                 WHERE kelas_id = $kelas_id
+                 AND tahun_ajaran_id = $tahun_ajaran_id
+                 LIMIT 1"
+            );
+
+
+            if (mysqli_num_rows($cek) > 0) {
+
+                $error =
+                    "Kelas tersebut sudah memiliki wali kelas pada tahun ajaran ini.";
+
+            } else {
+
+                /* =========================
+                   SIMPAN
+                ========================= */
+
+                $query = mysqli_query(
+                    $koneksi,
+                    "INSERT INTO wali_kelas
+                    (
+                        guru_id,
+                        kelas_id,
+                        tahun_ajaran_id
+                    )
+                    VALUES
+                    (
+                        $guru_id,
+                        $kelas_id,
+                        $tahun_ajaran_id
+                    )"
+                );
+
+
+                if ($query) {
+
+                    header(
+                        "Location: kelola_wali_kelas.php"
+                    );
+
+                    exit;
+
+                } else {
+
+                    $error =
+                        "Gagal menambahkan wali kelas: "
+                        . mysqli_error($koneksi);
+                }
+            }
+        }
+    }
+}
+
+
+/* =========================
    HAPUS WALI KELAS
-===================================================== */
+========================= */
 
 if (isset($_GET['hapus'])) {
 
     $id = intval($_GET['hapus']);
 
-    mysqli_query(
-        $koneksi,
-        "DELETE FROM wali_kelas WHERE id = $id"
+    if ($id > 0) {
+
+        mysqli_query(
+            $koneksi,
+            "DELETE FROM wali_kelas
+             WHERE id = $id"
+        );
+    }
+
+    header(
+        "Location: kelola_wali_kelas.php"
     );
 
-    header("Location: kelola_wali_kelas.php");
     exit;
 }
 
 
-/* =====================================================
-   SIMPAN WALI KELAS
-===================================================== */
-
-if (isset($_POST['simpan'])) {
-
-    $guru_id = intval($_POST['guru_id']);
-    $kelas_id = intval($_POST['kelas_id']);
-    $tahun_ajaran_id = intval($_POST['tahun_ajaran_id']);
-
-    if ($guru_id > 0 && $kelas_id > 0 && $tahun_ajaran_id > 0) {
-
-        $cek = mysqli_query(
-            $koneksi,
-            "SELECT id
-             FROM wali_kelas
-             WHERE guru_id = $guru_id
-             AND kelas_id = $kelas_id
-             AND tahun_ajaran_id = $tahun_ajaran_id"
-        );
-
-        if (mysqli_num_rows($cek) > 0) {
-
-            $pesan = "Data wali kelas tersebut sudah ada.";
-
-        } else {
-
-            mysqli_query(
-                $koneksi,
-                "INSERT INTO wali_kelas
-                (guru_id, kelas_id, tahun_ajaran_id)
-                VALUES
-                ($guru_id, $kelas_id, $tahun_ajaran_id)"
-            );
-
-            header("Location: kelola_wali_kelas.php");
-            exit;
-        }
-
-    } else {
-
-        $pesan = "Semua data harus dipilih.";
-    }
-}
-
-
-/* =====================================================
+/* =========================
    DATA GURU
-===================================================== */
+========================= */
 
-$query_guru = mysqli_query(
+$guru_data = mysqli_query(
     $koneksi,
-    "SELECT id, nama
+    "SELECT
+        id,
+        nip,
+        nama
      FROM guru
-     WHERE status_aktif = 1
      ORDER BY nama ASC"
 );
 
 
-/* =====================================================
+/* =========================
    DATA KELAS
-===================================================== */
+========================= */
 
-$query_kelas = mysqli_query(
+$kelas_data = mysqli_query(
     $koneksi,
-    "SELECT id, nama_kelas, jurusan, tingkat
+    "SELECT
+        id,
+        nama_kelas
      FROM kelas
-     WHERE status_aktif = 1
-     ORDER BY tingkat ASC, nama_kelas ASC"
+     ORDER BY nama_kelas ASC"
 );
 
 
-/* =====================================================
+/* =========================
    DATA TAHUN AJARAN
-===================================================== */
+========================= */
 
-$query_tahun = mysqli_query(
+$tahun_data = mysqli_query(
     $koneksi,
-    "SELECT id, tahun, nama, semester
+    "SELECT
+        id,
+        nama,
+        aktif
      FROM tahun_ajaran
-     WHERE status_aktif = 1
      ORDER BY id DESC"
 );
 
 
-/* =====================================================
+/* =========================
    DATA WALI KELAS
-===================================================== */
+========================= */
 
-$query_wali = mysqli_query(
+$data = mysqli_query(
     $koneksi,
     "SELECT
-        w.id,
-        g.nama AS nama_guru,
-        k.nama_kelas,
-        k.jurusan,
-        k.tingkat,
-        ta.tahun,
-        ta.nama AS nama_tahun,
-        ta.semester
+        wk.id,
+        wk.guru_id,
+        wk.kelas_id,
+        wk.tahun_ajaran_id,
 
-     FROM wali_kelas w
+        g.nip,
+        g.nama AS nama_guru,
+
+        k.nama_kelas,
+
+        t.nama AS nama_tahun,
+        t.aktif
+
+     FROM wali_kelas wk
 
      INNER JOIN guru g
-        ON w.guru_id = g.id
+        ON wk.guru_id = g.id
 
      INNER JOIN kelas k
-        ON w.kelas_id = k.id
+        ON wk.kelas_id = k.id
 
-     INNER JOIN tahun_ajaran ta
-        ON w.tahun_ajaran_id = ta.id
+     INNER JOIN tahun_ajaran t
+        ON wk.tahun_ajaran_id = t.id
 
-     ORDER BY w.id DESC"
+     ORDER BY wk.id DESC"
 );
 
 ?>
 
 <!DOCTYPE html>
+
 <html lang="id">
 
 <head>
 
-    <meta charset="UTF-8">
+<meta charset="UTF-8">
 
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
-    <title>Data Wali Kelas</title>
-
-    <style>
-
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #f4f6f8;
-            color: #333;
-        }
-
-        /* =================================================
-           SIDEBAR
-        ================================================= */
-
-        .sidebar {
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 220px;
-            height: 100vh;
-            background: #687280;
-            padding: 20px 12px;
-            overflow-y: auto;
-        }
-
-        .sidebar-title {
-            color: white;
-            font-size: 19px;
-            font-weight: bold;
-            margin: 0 8px 25px;
-            line-height: 1.4;
-        }
-
-        .sidebar a {
-            display: block;
-            padding: 11px 13px;
-            margin-bottom: 5px;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-
-        .sidebar a:hover {
-            background: #56606d;
-        }
-
-        .sidebar a.active {
-            background: #4f5965;
-            font-weight: bold;
-        }
-
-        .sidebar .logout {
-            margin-top: 20px;
-            background: #b42323;
-        }
-
-        .sidebar .logout:hover {
-            background: #941d1d;
-        }
+<title>Wali Kelas</title>
 
 
-        /* =================================================
-           CONTENT
-        ================================================= */
+<style>
 
-        .content {
-            margin-left: 220px;
-            padding: 30px;
-        }
+* {
+    box-sizing: border-box;
+}
 
-
-        /* =================================================
-           JUDUL
-        ================================================= */
-
-        .page-title {
-            margin-bottom: 18px;
-        }
-
-        .page-title h1 {
-            margin: 0;
-            font-size: 25px;
-        }
-
-        .page-title p {
-            margin: 7px 0 0;
-            color: #777;
-            font-size: 14px;
-        }
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f4f6f8;
+    color: #333;
+}
 
 
-        /* =================================================
-           BOX
-        ================================================= */
+/* =========================
+   SIDEBAR
+========================= */
 
-        .box {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 7px;
-            padding: 18px;
-            margin-bottom: 20px;
-        }
+.sidebar {
 
-        .box h2 {
-            margin: 0 0 18px;
-            font-size: 18px;
-        }
+    position: fixed;
 
+    left: 0;
 
-        /* =================================================
-           FORM
-        ================================================= */
+    top: 0;
 
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
+    width: 220px;
 
-        .form-group {
-            margin-bottom: 5px;
-        }
+    height: 100vh;
 
-        .form-group.full {
-            grid-column: 1 / 3;
-        }
+    background: #687280;
 
-        label {
-            display: block;
-            margin-bottom: 7px;
-            font-size: 13px;
-            font-weight: bold;
-        }
+    padding: 20px 12px;
 
-        select {
-            width: 100%;
-            padding: 9px 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            background: white;
-            font-size: 13px;
-        }
+    overflow-y: auto;
+}
 
-        select:focus {
-            outline: none;
-            border-color: #687280;
-        }
+.sidebar-title {
 
-        .btn-simpan {
-            margin-top: 10px;
-            background: #1783a3;
-            color: white;
-            border: none;
-            padding: 10px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: bold;
-        }
+    color: white;
 
-        .btn-simpan:hover {
-            background: #126d88;
-        }
+    font-size: 19px;
+
+    font-weight: bold;
+
+    margin: 0 8px 25px;
+
+    line-height: 1.4;
+}
+
+.sidebar a {
+
+    display: block;
+
+    padding: 11px 13px;
+
+    margin-bottom: 5px;
+
+    color: white;
+
+    text-decoration: none;
+
+    border-radius: 5px;
+
+    font-size: 14px;
+}
+
+.sidebar a:hover,
+.sidebar a.active {
+
+    background: #4f5965;
+}
+
+.logout {
+
+    margin-top: 20px;
+
+    background: #b42323;
+}
+
+.logout:hover {
+
+    background: #941d1d !important;
+}
 
 
-        /* =================================================
-           PESAN
-        ================================================= */
+/* =========================
+   CONTENT
+========================= */
 
-        .pesan {
-            background: #ffe5e5;
-            border: 1px solid #ffb3b3;
-            color: #a00000;
-            padding: 10px;
-            margin-bottom: 15px;
-            border-radius: 4px;
-            font-size: 13px;
-        }
+.content {
+
+    margin-left: 220px;
+
+    padding: 30px;
+}
 
 
-        /* =================================================
-           TABEL
-        ================================================= */
+/* =========================
+   HEADER
+========================= */
 
-        .table-info {
-            font-size: 13px;
-            color: #777;
-            margin-bottom: 10px;
-        }
+.header {
 
-        .table-container {
-            overflow-x: auto;
-        }
+    background: white;
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 750px;
-        }
+    border: 1px solid #ddd;
 
-        th {
-            background: #687280;
-            color: white;
-            padding: 11px;
-            text-align: left;
-            font-size: 13px;
-            border: 1px solid #687280;
-        }
+    border-radius: 7px;
 
-        td {
-            padding: 11px;
-            border: 1px solid #ddd;
-            font-size: 13px;
-            background: white;
-        }
+    padding: 22px;
 
-        tr:hover td {
-            background: #f7f7f7;
-        }
+    margin-bottom: 20px;
+}
 
-        .hapus {
-            color: #c00000;
-            text-decoration: none;
-            font-weight: bold;
-        }
+.header h1 {
 
-        .hapus:hover {
-            text-decoration: underline;
-        }
+    margin: 0;
+
+    font-size: 24px;
+}
+
+.header p {
+
+    color: #777;
+
+    margin-bottom: 0;
+}
 
 
-        /* =================================================
-           RESPONSIVE
-        ================================================= */
+/* =========================
+   BOX
+========================= */
 
-        @media (max-width: 800px) {
+.box {
 
-            .sidebar {
-                position: relative;
-                width: 100%;
-                height: auto;
-            }
+    background: white;
 
-            .content {
-                margin-left: 0;
-                padding: 15px;
-            }
+    border: 1px solid #ddd;
 
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
+    border-radius: 7px;
 
-            .form-group.full {
-                grid-column: auto;
-            }
+    padding: 22px;
 
-        }
+    margin-bottom: 20px;
+}
 
-    </style>
+
+/* =========================
+   ATAS
+========================= */
+
+.atas {
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    margin-bottom: 20px;
+}
+
+.atas h2 {
+
+    margin: 0;
+}
+
+.btn-tambah {
+
+    display: inline-block;
+
+    background: #087f5b;
+
+    color: white;
+
+    text-decoration: none;
+
+    padding: 10px 15px;
+
+    border-radius: 5px;
+}
+
+.btn-tambah:hover {
+
+    background: #066b4d;
+}
+
+
+/* =========================
+   FORM
+========================= */
+
+.form-grid {
+
+    display: grid;
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 15px;
+}
+
+.form-group {
+
+    display: flex;
+
+    flex-direction: column;
+}
+
+.form-group.full {
+
+    grid-column: 1 / -1;
+}
+
+label {
+
+    margin-bottom: 6px;
+
+    font-size: 13px;
+
+    font-weight: bold;
+}
+
+select {
+
+    padding: 10px;
+
+    border: 1px solid #ccc;
+
+    border-radius: 5px;
+
+    font-family: Arial;
+
+    background: white;
+}
+
+.btn-simpan {
+
+    margin-top: 15px;
+
+    padding: 10px 18px;
+
+    border: none;
+
+    border-radius: 5px;
+
+    background: #687280;
+
+    color: white;
+
+    cursor: pointer;
+}
+
+.btn-simpan:hover {
+
+    background: #56606d;
+}
+
+.btn-batal {
+
+    display: inline-block;
+
+    margin-left: 8px;
+
+    padding: 9px 16px;
+
+    background: #777;
+
+    color: white;
+
+    text-decoration: none;
+
+    border-radius: 5px;
+}
+
+
+/* =========================
+   ERROR
+========================= */
+
+.error {
+
+    background: #fee2e2;
+
+    color: #b91c1c;
+
+    border: 1px solid #fecaca;
+
+    padding: 10px;
+
+    margin-bottom: 15px;
+
+    border-radius: 5px;
+}
+
+
+/* =========================
+   TABLE
+========================= */
+
+.table-container {
+
+    overflow-x: auto;
+}
+
+table {
+
+    width: 100%;
+
+    border-collapse: collapse;
+}
+
+th {
+
+    background: #687280;
+
+    color: white;
+
+    padding: 11px;
+
+    text-align: left;
+
+    font-size: 13px;
+}
+
+td {
+
+    padding: 11px;
+
+    border-bottom: 1px solid #ddd;
+
+    font-size: 13px;
+}
+
+tr:hover {
+
+    background: #f7f7f7;
+}
+
+
+/* =========================
+   STATUS
+========================= */
+
+.status-aktif {
+
+    color: #087f5b;
+
+    font-weight: bold;
+}
+
+.status-nonaktif {
+
+    color: #b42323;
+
+    font-weight: bold;
+}
+
+
+/* =========================
+   AKSI
+========================= */
+
+.btn-edit,
+.btn-hapus {
+
+    display: inline-block;
+
+    color: white;
+
+    padding: 6px 10px;
+
+    text-decoration: none;
+
+    border-radius: 4px;
+
+    font-size: 12px;
+}
+
+.btn-edit {
+
+    background: #086177;
+}
+
+.btn-edit:hover {
+
+    background: #064d5f;
+}
+
+.btn-hapus {
+
+    background: #b42323;
+}
+
+.btn-hapus:hover {
+
+    background: #941d1d;
+}
+
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media(max-width:700px) {
+
+    .sidebar {
+
+        position: relative;
+
+        width: 100%;
+
+        height: auto;
+    }
+
+    .content {
+
+        margin-left: 0;
+
+        padding: 15px;
+    }
+
+    .form-grid {
+
+        grid-template-columns: 1fr;
+    }
+
+    .atas {
+
+        display: block;
+    }
+
+    .btn-tambah {
+
+        display: inline-block;
+
+        margin-top: 10px;
+    }
+
+}
+
+</style>
 
 </head>
 
@@ -428,15 +722,17 @@ $query_wali = mysqli_query(
 <body>
 
 
-<!-- =====================================================
+<!-- =========================
      SIDEBAR
-===================================================== -->
+========================= -->
 
 <div class="sidebar">
 
     <div class="sidebar-title">
+
         ⚖ Pelanggaran<br>
         Siswa
+
     </div>
 
 
@@ -445,126 +741,314 @@ $query_wali = mysqli_query(
     </a>
 
 
-    <?php if ($role == 'admin') { ?>
-
-        <a href="kelola_siswa.php">
-             Data Siswa
-        </a>
-
-        <a href="kelola_guru.php">
-             Data Guru
-        </a>
-
-        <a href="kelola_kelas.php">
-             Data Kelas
-        </a>
-
-        <a href="kelola_tahun_ajaran.php">
-             Tahun Ajaran
-        </a>
-
-        <a href="kelola_wali_kelas.php" class="active">
-             Wali Kelas
-        </a>
-
-        <a href="penempatan_siswa.php">
-             Penempatan Siswa
-        </a>
-
-        <a href="kelola_pelanggaran_kategori.php">
-            ⚠ Kategori Pelanggaran
-        </a>
-
-        <a href="pelanggaran.php">
-            Data Pelanggaran
-        </a>
-
-        <a href="tindakan.php">
-             Data Tindakan
-        </a>
-
-        <a href="laporan.php">
-             Laporan
-        </a>
-
-        <a href="about_me.php">
-            ℹ About Me
-        </a>
-
-    <?php } ?>
+    <a href="kelola_siswa.php">
+        Data Siswa
+    </a>
 
 
-    <?php if ($role == 'guru') { ?>
-
-        <a href="catat_pelanggaran.php">
-             Catat Pelanggaran
-        </a>
-
-        <a href="tindakan.php">
-             Tindakan
-        </a>
-
-        <a href="riwayat.php">
-             Riwayat
-        </a>
-
-        <a href="rekap_poin.php">
-             Rekap Poin
-        </a>
-
-    <?php } ?>
+    <a href="kelola_guru.php">
+        Data Guru
+    </a>
 
 
-    <a href="logout.php" class="logout">
+    <a href="kelola_kelas.php">
+        Data Kelas
+    </a>
+
+
+    <a href="kelola_tahun_ajaran.php">
+        Tahun Ajaran
+    </a>
+
+
+    <a
+        href="kelola_wali_kelas.php"
+        class="active"
+    >
+        Wali Kelas
+    </a>
+
+
+    <a href="penempatan_siswa.php">
+        Penempatan Siswa
+    </a>
+
+
+    <a href="kelola_pelanggaran_kategori.php">
+        ⚠ Kategori Pelanggaran
+    </a>
+
+
+    <a href="pelanggaran.php">
+        Data Pelanggaran
+    </a>
+
+
+    <a href="tindakan.php">
+        Data Tindakan
+    </a>
+
+
+    <a href="laporan.php">
+        Laporan
+    </a>
+
+
+    <a href="about_me.php">
+        ℹ About Me
+    </a>
+
+
+    <a
+        href="logout.php"
+        class="logout"
+    >
         🚪 Logout
     </a>
 
 </div>
 
 
-<!-- =====================================================
+<!-- =========================
      CONTENT
-===================================================== -->
+========================= -->
 
 <div class="content">
 
 
-    <!-- JUDUL -->
-
-    <div class="page-title">
+    <div class="header">
 
         <h1>
-            Data Wali Kelas
+            Wali Kelas
         </h1>
 
         <p>
-            Kelola data wali kelas dalam sistem pelanggaran siswa.
+            Kelola guru yang menjadi wali kelas.
         </p>
 
     </div>
 
 
-    <!-- =================================================
-         FORM TAMBAH
-    ================================================== -->
+    <?php if (isset($error)) { ?>
+
+        <div class="error">
+
+            <?= htmlspecialchars($error); ?>
+
+        </div>
+
+    <?php } ?>
+
+
+    <!-- =========================
+         DAFTAR WALI KELAS
+    ========================= -->
 
     <div class="box">
 
+
+        <div class="atas">
+
+            <h2>
+                Daftar Wali Kelas
+            </h2>
+
+
+            <a
+                href="#form-tambah"
+                class="btn-tambah"
+                onclick="tampilkanForm()"
+            >
+                + Tambah Wali Kelas
+            </a>
+
+        </div>
+
+
+        <div class="table-container">
+
+            <table>
+
+                <thead>
+
+                    <tr>
+
+                        <th>No</th>
+
+                        <th>NIP</th>
+
+                        <th>Nama Guru</th>
+
+                        <th>Kelas</th>
+
+                        <th>Tahun Ajaran</th>
+
+                        <th>Status</th>
+
+                        <th>Aksi</th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody>
+
+
+                <?php
+
+                $no = 1;
+
+                if (
+                    $data &&
+                    mysqli_num_rows($data) > 0
+                ) {
+
+                    while (
+                        $row = mysqli_fetch_assoc($data)
+                    ) {
+
+                ?>
+
+                    <tr>
+
+                        <td>
+                            <?= $no++; ?>
+                        </td>
+
+
+                        <td>
+
+                            <?= htmlspecialchars(
+                                $row['nip'] ?? '-'
+                            ); ?>
+
+                        </td>
+
+
+                        <td>
+
+                            <b>
+
+                                <?= htmlspecialchars(
+                                    $row['nama_guru']
+                                ); ?>
+
+                            </b>
+
+                        </td>
+
+
+                        <td>
+
+                            <?= htmlspecialchars(
+                                $row['nama_kelas']
+                            ); ?>
+
+                        </td>
+
+
+                        <td>
+
+                            <?= htmlspecialchars(
+                                $row['nama_tahun']
+                            ); ?>
+
+                        </td>
+
+
+                        <td>
+
+                            <?php if ($row['aktif'] == 1) { ?>
+
+                                <span class="status-aktif">
+                                    Aktif
+                                </span>
+
+                            <?php } else { ?>
+
+                                <span class="status-nonaktif">
+                                    Tidak Aktif
+                                </span>
+
+                            <?php } ?>
+
+                        </td>
+
+
+                        <td>
+
+                            <a
+                                href="edit_wali_kelas.php?id=<?= $row['id']; ?>"
+                                class="btn-edit"
+                            >
+                                Edit
+                            </a>
+
+
+                            <a
+                                href="kelola_wali_kelas.php?hapus=<?= $row['id']; ?>"
+                                class="btn-hapus"
+                                onclick="return confirm('Yakin ingin menghapus wali kelas ini?')"
+                            >
+                                Hapus
+                            </a>
+
+                        </td>
+
+                    </tr>
+
+                <?php
+
+                    }
+
+                } else {
+
+                ?>
+
+                    <tr>
+
+                        <td
+                            colspan="7"
+                            style="text-align:center;padding:25px;"
+                        >
+
+                            Belum ada data wali kelas.
+
+                        </td>
+
+                    </tr>
+
+                <?php } ?>
+
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================
+         FORM TAMBAH
+         TERSEMBUNYI
+    ========================= -->
+
+    <div
+        class="box"
+        id="form-tambah"
+        style="display:none;"
+    >
+
         <h2>
-            Tambah Data Wali Kelas
+            Tambah Wali Kelas
         </h2>
 
 
-        <?php if (isset($pesan)) { ?>
-
-            <div class="pesan">
-                <?= htmlspecialchars($pesan); ?>
-            </div>
-
-        <?php } ?>
-
-
         <form method="POST">
+
 
             <div class="form-grid">
 
@@ -577,27 +1061,49 @@ $query_wali = mysqli_query(
                         Guru
                     </label>
 
-                    <select name="guru_id" required>
+                    <select
+                        name="guru_id"
+                        required
+                    >
 
                         <option value="">
                             -- Pilih Guru --
                         </option>
 
+
                         <?php
 
-                        while ($guru = mysqli_fetch_assoc($query_guru)) {
+                        if ($guru_data) {
+
+                            while (
+                                $g = mysqli_fetch_assoc($guru_data)
+                            ) {
 
                         ?>
 
-                            <option value="<?= $guru['id']; ?>">
+                            <option
+                                value="<?= $g['id']; ?>"
+                            >
 
                                 <?= htmlspecialchars(
-                                    $guru['nama']
+                                    $g['nip'] ?? '-'
+                                ); ?>
+
+                                -
+                                
+                                <?= htmlspecialchars(
+                                    $g['nama']
                                 ); ?>
 
                             </option>
 
-                        <?php } ?>
+                        <?php
+
+                            }
+
+                        }
+
+                        ?>
 
                     </select>
 
@@ -612,43 +1118,43 @@ $query_wali = mysqli_query(
                         Kelas
                     </label>
 
-                    <select name="kelas_id" required>
+                    <select
+                        name="kelas_id"
+                        required
+                    >
 
                         <option value="">
                             -- Pilih Kelas --
                         </option>
 
+
                         <?php
 
-                        while ($kelas = mysqli_fetch_assoc($query_kelas)) {
+                        if ($kelas_data) {
+
+                            while (
+                                $k = mysqli_fetch_assoc($kelas_data)
+                            ) {
 
                         ?>
 
-                            <option value="<?= $kelas['id']; ?>">
+                            <option
+                                value="<?= $k['id']; ?>"
+                            >
 
                                 <?= htmlspecialchars(
-                                    $kelas['nama_kelas']
+                                    $k['nama_kelas']
                                 ); ?>
-
-                                <?php if (!empty($kelas['jurusan'])) { ?>
-
-                                    - <?= htmlspecialchars(
-                                        $kelas['jurusan']
-                                    ); ?>
-
-                                <?php } ?>
-
-                                <?php if (!empty($kelas['tingkat'])) { ?>
-
-                                    - <?= htmlspecialchars(
-                                        $kelas['tingkat']
-                                    ); ?>
-
-                                <?php } ?>
 
                             </option>
 
-                        <?php } ?>
+                        <?php
+
+                            }
+
+                        }
+
+                        ?>
 
                     </select>
 
@@ -657,43 +1163,55 @@ $query_wali = mysqli_query(
 
                 <!-- TAHUN AJARAN -->
 
-                <div class="form-group">
+                <div class="form-group full">
 
                     <label>
                         Tahun Ajaran
                     </label>
 
-                    <select name="tahun_ajaran_id" required>
+                    <select
+                        name="tahun_ajaran_id"
+                        required
+                    >
 
                         <option value="">
                             -- Pilih Tahun Ajaran --
                         </option>
 
+
                         <?php
 
-                        while ($tahun = mysqli_fetch_assoc($query_tahun)) {
+                        if ($tahun_data) {
+
+                            while (
+                                $t = mysqli_fetch_assoc($tahun_data)
+                            ) {
 
                         ?>
 
-                            <option value="<?= $tahun['id']; ?>">
+                            <option
+                                value="<?= $t['id']; ?>"
+                            >
 
                                 <?= htmlspecialchars(
-                                    !empty($tahun['tahun'])
-                                    ? $tahun['tahun']
-                                    : $tahun['nama']
+                                    $t['nama']
                                 ); ?>
 
-                                <?php if (!empty($tahun['semester'])) { ?>
-
-                                    - <?= htmlspecialchars(
-                                        $tahun['semester']
-                                    ); ?>
-
-                                <?php } ?>
+                                <?php
+                                if ($t['aktif'] == 1) {
+                                    echo " - Aktif";
+                                }
+                                ?>
 
                             </option>
 
-                        <?php } ?>
+                        <?php
+
+                            }
+
+                        }
+
+                        ?>
 
                     </select>
 
@@ -708,8 +1226,17 @@ $query_wali = mysqli_query(
                 name="simpan"
                 class="btn-simpan"
             >
-                + Tambah Wali Kelas
+                Simpan
             </button>
+
+
+            <a
+                href="#"
+                class="btn-batal"
+                onclick="sembunyikanForm()"
+            >
+                Batal
+            </a>
 
 
         </form>
@@ -717,172 +1244,44 @@ $query_wali = mysqli_query(
     </div>
 
 
-    <!-- =================================================
-         DAFTAR WALI KELAS
-    ================================================== -->
-
-    <div class="box">
-
-        <h2>
-            Daftar Wali Kelas
-        </h2>
-
-        <div class="table-info">
-            Data wali kelas yang sudah terdaftar.
-        </div>
-
-
-        <div class="table-container">
-
-            <table>
-
-                <thead>
-
-                    <tr>
-
-                        <th style="width:50px;">
-                            No
-                        </th>
-
-                        <th>
-                            Guru
-                        </th>
-
-                        <th>
-                            Kelas
-                        </th>
-
-                        <th>
-                            Jurusan
-                        </th>
-
-                        <th>
-                            Tingkat
-                        </th>
-
-                        <th>
-                            Tahun
-                        </th>
-
-                        <th>
-                            Semester
-                        </th>
-
-                        <th style="width:80px;">
-                            Aksi
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-
-                <tbody>
-
-                    <?php
-
-                    $no = 1;
-
-                    if (
-                        $query_wali &&
-                        mysqli_num_rows($query_wali) > 0
-                    ) {
-
-                        while ($row = mysqli_fetch_assoc($query_wali)) {
-
-                    ?>
-
-                            <tr>
-
-                                <td>
-                                    <?= $no++; ?>
-                                </td>
-
-                                <td>
-                                    <b>
-                                        <?= htmlspecialchars(
-                                            $row['nama_guru'] ?? '-'
-                                        ); ?>
-                                    </b>
-                                </td>
-
-                                <td>
-                                    <?= htmlspecialchars(
-                                        $row['nama_kelas'] ?? '-'
-                                    ); ?>
-                                </td>
-
-                                <td>
-                                    <?= htmlspecialchars(
-                                        $row['jurusan'] ?? '-'
-                                    ); ?>
-                                </td>
-
-                                <td>
-                                    <?= htmlspecialchars(
-                                        $row['tingkat'] ?? '-'
-                                    ); ?>
-                                </td>
-
-                                <td>
-                                    <?= htmlspecialchars(
-                                        $row['tahun']
-                                        ?? $row['nama_tahun']
-                                        ?? '-'
-                                    ); ?>
-                                </td>
-
-                                <td>
-                                    <?= htmlspecialchars(
-                                        $row['semester'] ?? '-'
-                                    ); ?>
-                                </td>
-
-                                <td>
-
-                                    <a
-                                        href="kelola_wali_kelas.php?hapus=<?= $row['id']; ?>"
-                                        class="hapus"
-                                        onclick="return confirm('Yakin ingin menghapus data wali kelas ini?')"
-                                    >
-                                        Hapus
-                                    </a>
-
-                                </td>
-
-                            </tr>
-
-                    <?php
-
-                        }
-
-                    } else {
-
-                    ?>
-
-                        <tr>
-
-                            <td
-                                colspan="8"
-                                style="text-align:center; padding:25px;"
-                            >
-                                Belum ada data wali kelas.
-                            </td>
-
-                        </tr>
-
-                    <?php } ?>
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </div>
-
-
 </div>
+
+
+<script>
+
+/* =========================
+   TAMPILKAN FORM
+========================= */
+
+function tampilkanForm() {
+
+    document.getElementById(
+        "form-tambah"
+    ).style.display = "block";
+
+
+    document.getElementById(
+        "form-tambah"
+    ).scrollIntoView({
+        behavior: "smooth"
+    });
+
+}
+
+
+/* =========================
+   SEMBUNYIKAN FORM
+========================= */
+
+function sembunyikanForm() {
+
+    document.getElementById(
+        "form-tambah"
+    ).style.display = "none";
+
+}
+
+</script>
 
 
 </body>

@@ -1,57 +1,112 @@
+```php
 <?php
 
 session_start();
 
 include "database.php";
 
-$username = $_POST['username'] ?? '';
+
+/* =========================
+   AMBIL DATA LOGIN
+========================= */
+
+$username = trim($_POST['username'] ?? '');
 $password = $_POST['password'] ?? '';
 
-$username = mysqli_real_escape_string($koneksi, $username);
+
+/* =========================
+   CEK INPUT
+========================= */
+
+if ($username == '' || $password == '') {
+
+    header("Location: login.php?pesan=Gmail dan password wajib diisi");
+    exit;
+}
+
+
+/* =========================
+   AMBIL USER
+========================= */
+
+$username = mysqli_real_escape_string(
+    $koneksi,
+    $username
+);
 
 $query = mysqli_query(
     $koneksi,
-    "SELECT id, nama, username, password, role, aktif
+    "SELECT
+        id,
+        nama,
+        username,
+        password,
+        role,
+        aktif
      FROM users
      WHERE username = '$username'
      LIMIT 1"
 );
 
+
 if (!$query) {
-    die("Query error: " . mysqli_error($koneksi));
+
+    die(
+        "Query error: " .
+        mysqli_error($koneksi)
+    );
+
 }
+
+
+/* =========================
+   CEK USER
+========================= */
 
 if (mysqli_num_rows($query) == 0) {
 
-    header("Location: login.php?pesan=Username tidak ditemukan");
-    exit;
+    header(
+        "Location: login.php?pesan=Gmail tidak ditemukan"
+    );
 
+    exit;
 }
+
 
 $user = mysqli_fetch_assoc($query);
 
 
-/* CEK PASSWORD */
+/* =========================
+   CEK AKUN AKTIF
+========================= */
 
-if ($password != $user['password']) {
+if ((int)$user['aktif'] !== 1) {
 
-    header("Location: login.php?pesan=Password salah");
+    header(
+        "Location: login.php?pesan=Akun tidak aktif"
+    );
+
     exit;
-
 }
 
 
-/* CEK AKUN */
+/* =========================
+   CEK PASSWORD
+========================= */
 
-if ($user['aktif'] == 0) {
+if ($password !== $user['password']) {
 
-    header("Location: login.php?pesan=Akun tidak aktif");
+    header(
+        "Location: login.php?pesan=Password salah"
+    );
+
     exit;
-
 }
 
 
-/* SIMPAN SESSION */
+/* =========================
+   LOGIN BERHASIL
+========================= */
 
 $_SESSION['login'] = true;
 
@@ -64,10 +119,13 @@ $_SESSION['username'] = $user['username'];
 $_SESSION['role'] = trim($user['role']);
 
 
-/* PINDAH KE DASHBOARD */
+/* =========================
+   KE DASHBOARD
+========================= */
 
 header("Location: dashboard.php");
 
 exit;
 
 ?>
+```

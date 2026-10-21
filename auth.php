@@ -10,7 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 |--------------------------------------------------------------------------
 */
 
-function wajibLogin()
+function wajib_login()
 {
     if (!isset($_SESSION['login'])) {
         header("Location: login.php");
@@ -26,17 +26,22 @@ function wajibLogin()
 
 function hanyaRole($roles = [])
 {
-    wajibLogin();
+    wajib_login();
 
-    if (!in_array($_SESSION['role'], $roles)) {
+    $role = $_SESSION['role'] ?? '';
 
-        echo "<!DOCTYPE html>
-        <html>
+    if (!in_array($role, $roles)) {
+
+        echo "
+        <!DOCTYPE html>
+        <html lang='id'>
         <head>
+            <meta charset='UTF-8'>
             <title>Akses Ditolak</title>
+
             <style>
                 body {
-                    font-family: Arial;
+                    font-family: Arial, sans-serif;
                     background: #f1f5f9;
                     text-align: center;
                     padding-top: 100px;
@@ -45,6 +50,7 @@ function hanyaRole($roles = [])
                 .box {
                     background: white;
                     width: 450px;
+                    max-width: 90%;
                     margin: auto;
                     padding: 30px;
                     border-radius: 10px;
@@ -63,6 +69,10 @@ function hanyaRole($roles = [])
                     color: white;
                     text-decoration: none;
                     border-radius: 6px;
+                }
+
+                a:hover {
+                    background: #064c5d;
                 }
             </style>
         </head>
@@ -84,7 +94,8 @@ function hanyaRole($roles = [])
             </div>
 
         </body>
-        </html>";
+        </html>
+        ";
 
         exit;
     }

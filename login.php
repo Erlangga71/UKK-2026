@@ -1,19 +1,81 @@
 <?php
-session_start();
 
-if (isset($_SESSION['login'])) {
-    header("Location: dashboard.php");
-    exit;
+session_start();
+include "database.php";
+
+$pesan = "";
+
+if (isset($_POST['login'])) {
+
+    $email = trim($_POST['email'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    if ($email == "" || $password == "") {
+
+        $pesan = "Email dan password wajib diisi.";
+
+    } else {
+
+        $email = mysqli_real_escape_string($koneksi, $email);
+
+        $query = mysqli_query(
+            $koneksi,
+            "SELECT id, nama, email, password, role, aktif
+             FROM users
+             WHERE email = '$email'
+             LIMIT 1"
+        );
+
+        if (!$query) {
+            die("Error database: " . mysqli_error($koneksi));
+        }
+
+        if (mysqli_num_rows($query) == 1) {
+
+            $user = mysqli_fetch_assoc($query);
+
+            if ($user['aktif'] != 1) {
+
+                $pesan = "Akun tidak aktif.";
+
+            } elseif (password_verify($password, $user['password'])) {
+
+                $_SESSION['login'] = true;
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['nama'] = $user['nama'];
+                $_SESSION['email'] = $user['email'];
+                $_SESSION['role'] = $user['role'];
+
+                header("Location: dashboard.php");
+                exit;
+
+            } else {
+
+                $pesan = "Email atau password salah.";
+
+            }
+
+        } else {
+
+            $pesan = "Email atau password salah.";
+
+        }
+    }
 }
 
-$pesan = $_GET['pesan'] ?? '';
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="id">
+
 <head>
 
-    <title>Login</title>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Login Sistem</title>
 
     <style>
 
@@ -24,63 +86,109 @@ $pesan = $_GET['pesan'] ?? '';
         body {
             margin: 0;
             font-family: Arial, sans-serif;
-            background: #eef4f7;
+            background: #f4f4f4;
+        }
+
+        .login-container {
+            min-height: 100vh;
+
+            display: flex;
+
+            justify-content: center;
+
+            align-items: center;
         }
 
         .login-box {
-            width: 370px;
-            margin: 120px auto;
+            width: 360px;
+
             background: white;
-            padding: 28px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+
+            padding: 30px;
+
+            border: 1px solid #ddd;
+
+            border-radius: 8px;
         }
 
-        h2 {
+        h1 {
             text-align: center;
-            color: #086177;
+
+            margin-top: 0;
+
+            font-size: 25px;
+        }
+
+        .deskripsi {
+            text-align: center;
+
+            color: #777;
+
+            font-size: 14px;
+
             margin-bottom: 25px;
+        }
+
+        .error {
+            background: #f8d7da;
+
+            border: 1px solid #f5c2c7;
+
+            color: #842029;
+
+            padding: 10px;
+
+            border-radius: 5px;
+
+            margin-bottom: 15px;
+
+            font-size: 14px;
         }
 
         label {
             display: block;
-            margin-bottom: 7px;
+
+            font-weight: bold;
+
+            font-size: 14px;
+
+            margin-bottom: 6px;
         }
 
         input {
             width: 100%;
-            padding: 11px;
-            margin-bottom: 18px;
-            border: 1px solid #bbb;
-            border-radius: 5px;
-        }
 
-        input:focus {
-            border-color: #086177;
-            outline: none;
+            padding: 10px;
+
+            border: 1px solid #ccc;
+
+            border-radius: 5px;
+
+            margin-bottom: 15px;
+
+            font-size: 14px;
         }
 
         button {
             width: 100%;
+
             padding: 11px;
+
             border: none;
+
             border-radius: 5px;
-            background: #086177;
+
+            background: #176b80;
+
             color: white;
+
             cursor: pointer;
+
+            font-size: 14px;
         }
 
         button:hover {
-            background: #064d5f;
-        }
-
-        .pesan {
-            background: #fee2e2;
-            color: #b91c1c;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 18px;
-            text-align: center;
+            background: #0d5364;
         }
 
     </style>
@@ -89,45 +197,57 @@ $pesan = $_GET['pesan'] ?? '';
 
 <body>
 
-<div class="login-box">
+<div class="login-container">
 
-    <h2>LOGIN</h2>
+    <div class="login-box">
 
-    <?php if ($pesan != '') { ?>
+        <h1>Login Sistem</h1>
 
-        <div class="pesan">
-            <?= htmlspecialchars($pesan); ?>
+        <div class="deskripsi">
+            Sistem Informasi Pelanggaran Siswa
         </div>
 
-    <?php } ?>
+        <?php if ($pesan != "") { ?>
 
-    <form action="proses_login.php" method="POST">
+            <div class="error">
+                <?= htmlspecialchars($pesan); ?>
+            </div>
 
-        <label>Username</label>
+        <?php } ?>
 
-        <input
-            type="text"
-            name="username"
-            placeholder="Masukkan username"
-            required
-        >
+        <form method="POST">
 
-        <label>Password</label>
+            <label>Email</label>
 
-        <input
-            type="password"
-            name="password"
-            placeholder="Masukkan password"
-            required
-        >
+            <input
+                type="email"
+                name="email"
+                placeholder="Masukkan email"
+                required
+            >
 
-        <button type="submit">
-            LOGIN
-        </button>
+            <label>Password</label>
 
-    </form>
+            <input
+                type="password"
+                name="password"
+                placeholder="Masukkan password"
+                required
+            >
+
+            <button
+                type="submit"
+                name="login"
+            >
+                Login
+            </button>
+
+        </form>
+
+    </div>
 
 </div>
 
 </body>
+
 </html>

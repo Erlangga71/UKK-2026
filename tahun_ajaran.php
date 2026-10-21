@@ -39,10 +39,8 @@ $query = mysqli_query($koneksi, "SELECT * FROM tahun_ajaran");
 
             <tr>
                 <th>No</th>
-                <th>Nama</th>
-                <th>Tanggal Mulai</th>
-                <th>Tanggal Selesai</th>
-                <th>Status</th>
+                <th>Nama Tahun Ajaran</th>
+                <th>Semester</th>
                 <th>Aksi</th>
             </tr>
 
@@ -61,19 +59,7 @@ $query = mysqli_query($koneksi, "SELECT * FROM tahun_ajaran");
                 </td>
 
                 <td>
-                    <?= htmlspecialchars($data['tanggal_mulai']); ?>
-                </td>
-
-                <td>
-                    <?= htmlspecialchars($data['tanggal_selesai']); ?>
-                </td>
-
-                <td>
-                    <?php
-                    echo $data['aktif'] == 1
-                        ? "Aktif"
-                        : "Tidak Aktif";
-                    ?>
+                    <?= htmlspecialchars($data['semester']); ?>
                 </td>
 
                 <td>

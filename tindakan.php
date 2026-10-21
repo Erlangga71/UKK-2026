@@ -1,3 +1,4 @@
+
 <?php
 
 require_once "cek_role.php";
@@ -50,7 +51,6 @@ if (!$query) {
 }
 
 ?>
-
 
 <!DOCTYPE html>
 
@@ -105,13 +105,11 @@ if (!$query) {
 
         }
 
-
         .header b {
 
             font-size: 18px;
 
         }
-
 
         .header a {
 
@@ -128,7 +126,6 @@ if (!$query) {
             font-size: 13px;
 
         }
-
 
         .header a:hover {
 
@@ -168,7 +165,6 @@ if (!$query) {
 
         }
 
-
         .box h2 {
 
             margin-top: 0;
@@ -202,7 +198,6 @@ if (!$query) {
 
         }
 
-
         .btn-tambah:hover {
 
             background: #56606d;
@@ -224,7 +219,6 @@ if (!$query) {
 
         }
 
-
         table {
 
             width: 100%;
@@ -234,7 +228,6 @@ if (!$query) {
             min-width: 900px;
 
         }
-
 
         th {
 
@@ -252,7 +245,6 @@ if (!$query) {
 
         }
 
-
         td {
 
             padding: 11px;
@@ -265,13 +257,11 @@ if (!$query) {
 
         }
 
-
         tr:nth-child(even) {
 
             background: #f8f9fa;
 
         }
-
 
         tr:hover {
 
@@ -290,8 +280,9 @@ if (!$query) {
 
             font-size: 13px;
 
-        }
+            font-weight: bold;
 
+        }
 
         .edit {
 
@@ -299,10 +290,21 @@ if (!$query) {
 
         }
 
+        .edit:hover {
+
+            text-decoration: underline;
+
+        }
 
         .hapus {
 
             color: #dc2626;
+
+        }
+
+        .hapus:hover {
+
+            text-decoration: underline;
 
         }
 
@@ -334,13 +336,11 @@ if (!$query) {
 
             }
 
-
             .header b {
 
                 font-size: 14px;
 
             }
-
 
             .container {
 
@@ -349,7 +349,6 @@ if (!$query) {
                 margin: 20px auto;
 
             }
-
 
             .box {
 
@@ -367,16 +366,13 @@ if (!$query) {
 <body>
 
 
-<!-- =========================
-     HEADER
-========================= -->
+<!-- HEADER -->
 
 <div class="header">
 
     <b>
         SISTEM INFORMASI PELANGGARAN SISWA
     </b>
-
 
     <a href="dashboard.php">
         ← Kembali
@@ -385,16 +381,11 @@ if (!$query) {
 </div>
 
 
-
-<!-- =========================
-     CONTENT
-========================= -->
+<!-- CONTENT -->
 
 <div class="container">
 
-
     <div class="box">
-
 
         <h2>
             Data Tindakan
@@ -422,46 +413,28 @@ if (!$query) {
 
         <div class="table-wrapper">
 
-
             <table>
-
 
                 <tr>
 
-                    <th>
-                        No
-                    </th>
+                    <th>No</th>
 
-                    <th>
-                        Siswa
-                    </th>
+                    <th>Siswa</th>
 
-                    <th>
-                        Jenis Pelanggaran
-                    </th>
+                    <th>Jenis Pelanggaran</th>
 
-                    <th>
-                        Tanggal
-                    </th>
+                    <th>Tanggal</th>
 
-                    <th>
-                        Tindakan
-                    </th>
+                    <th>Tindakan</th>
 
-                    <th>
-                        Petugas
-                    </th>
+                    <th>Petugas</th>
 
-                    <th>
-                        Catatan
-                    </th>
+                    <th>Catatan</th>
 
 
                     <?php if ($_SESSION['role'] == 'admin') { ?>
 
-                        <th>
-                            Aksi
-                        </th>
+                        <th>Aksi</th>
 
                     <?php } ?>
 
@@ -480,55 +453,68 @@ if (!$query) {
 
                     <tr>
 
-
                         <td>
                             <?= $no++; ?>
                         </td>
 
 
                         <td>
+
                             <b>
                                 <?= htmlspecialchars(
                                     $data['nama_siswa'] ?? '-'
                                 ); ?>
                             </b>
+
                         </td>
 
 
                         <td>
+
                             <?= htmlspecialchars(
                                 $data['jenis_pelanggaran'] ?? '-'
                             ); ?>
+
                         </td>
 
 
                         <td>
+
                             <?= htmlspecialchars(
                                 $data['tanggal'] ?? '-'
                             ); ?>
+
                         </td>
 
 
                         <td>
+
                             <?= htmlspecialchars(
                                 $data['tindakan'] ?? '-'
                             ); ?>
+
                         </td>
 
 
                         <td>
+
                             <?= htmlspecialchars(
                                 $data['nama_petugas'] ?? '-'
                             ); ?>
+
                         </td>
 
 
                         <td>
+
                             <?= htmlspecialchars(
                                 $data['catatan'] ?? '-'
                             ); ?>
+
                         </td>
 
+
+                        <!-- AKSI ADMIN -->
 
                         <?php if ($_SESSION['role'] == 'admin') { ?>
 
@@ -555,7 +541,6 @@ if (!$query) {
 
                         <?php } ?>
 
-
                     </tr>
 
 
@@ -566,7 +551,6 @@ if (!$query) {
                 } else {
 
                 ?>
-
 
                     <tr>
 
@@ -581,22 +565,17 @@ if (!$query) {
 
                     </tr>
 
-
                 <?php
 
                 }
 
                 ?>
 
-
             </table>
-
 
         </div>
 
-
     </div>
-
 
 </div>
 
@@ -604,3 +583,4 @@ if (!$query) {
 </body>
 
 </html>
+```

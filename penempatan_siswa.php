@@ -1,63 +1,100 @@
 <?php
 
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 session_start();
+
+require_once "database.php";
+
+
+/* =========================
+   CEK LOGIN
+========================= */
 
 if (!isset($_SESSION['login'])) {
     header("Location: login.php");
     exit;
 }
 
-include "database.php";
+
+/* =========================
+   CEK ROLE
+========================= */
 
 $role = $_SESSION['role'] ?? '';
 
+if ($role != 'admin') {
+    die("Akses ditolak.");
+}
+
+
 /* =========================
-   PROSES SIMPAN
+   TAMBAH PENEMPATAN
 ========================= */
 
 if (isset($_POST['simpan'])) {
 
-    $siswa_id = $_POST['siswa_id'] ?? '';
-    $kelas_id = $_POST['kelas_id'] ?? '';
-    $tahun_ajaran_id = $_POST['tahun_ajaran_id'] ?? '';
+    $siswa_id = (int)($_POST['siswa_id'] ?? 0);
+    $kelas_id = (int)($_POST['kelas_id'] ?? 0);
+    $tahun_ajaran_id = (int)($_POST['tahun_ajaran_id'] ?? 0);
 
-    if ($siswa_id == '' || $kelas_id == '' || $tahun_ajaran_id == '') {
+    if (
+        $siswa_id <= 0 ||
+        $kelas_id <= 0 ||
+        $tahun_ajaran_id <= 0
+    ) {
 
-        $pesan = "Semua data harus diisi.";
+        $error = "Semua data wajib dipilih.";
 
     } else {
 
-        // Cek apakah siswa sudah ditempatkan pada tahun ajaran tersebut
+        /* CEK DUPLIKAT */
+
         $cek = mysqli_query(
             $koneksi,
             "SELECT id
              FROM penempatan_siswa
-             WHERE siswa_id = '$siswa_id'
-             AND tahun_ajaran_id = '$tahun_ajaran_id'"
+             WHERE siswa_id = $siswa_id
+             AND kelas_id = $kelas_id
+             AND tahun_ajaran_id = $tahun_ajaran_id
+             LIMIT 1"
         );
 
         if (mysqli_num_rows($cek) > 0) {
 
-            $pesan = "Siswa tersebut sudah memiliki penempatan pada tahun ajaran ini.";
+            $error = "Penempatan siswa tersebut sudah ada.";
 
         } else {
 
-            $simpan = mysqli_query(
+            /* SIMPAN */
+
+            $query = mysqli_query(
                 $koneksi,
                 "INSERT INTO penempatan_siswa
-                (siswa_id, kelas_id, tahun_ajaran_id)
+                (
+                    siswa_id,
+                    kelas_id,
+                    tahun_ajaran_id
+                )
                 VALUES
-                ('$siswa_id', '$kelas_id', '$tahun_ajaran_id')"
+                (
+                    $siswa_id,
+                    $kelas_id,
+                    $tahun_ajaran_id
+                )"
             );
 
-            if ($simpan) {
+            if ($query) {
 
                 header("Location: penempatan_siswa.php");
                 exit;
 
             } else {
 
-                $pesan = "Data gagal disimpan.";
+                $error =
+                    "Gagal menyimpan penempatan: " .
+                    mysqli_error($koneksi);
             }
         }
     }
@@ -65,17 +102,21 @@ if (isset($_POST['simpan'])) {
 
 
 /* =========================
-   PROSES HAPUS
+   HAPUS PENEMPATAN
 ========================= */
 
 if (isset($_GET['hapus'])) {
 
-    $id = $_GET['hapus'];
+    $id = (int)$_GET['hapus'];
 
-    mysqli_query(
-        $koneksi,
-        "DELETE FROM penempatan_siswa WHERE id = '$id'"
-    );
+    if ($id > 0) {
+
+        mysqli_query(
+            $koneksi,
+            "DELETE FROM penempatan_siswa
+             WHERE id = $id"
+        );
+    }
 
     header("Location: penempatan_siswa.php");
     exit;
@@ -83,12 +124,15 @@ if (isset($_GET['hapus'])) {
 
 
 /* =========================
-   AMBIL DATA SISWA
+   DATA SISWA
 ========================= */
 
-$query_siswa = mysqli_query(
+$siswa = mysqli_query(
     $koneksi,
-    "SELECT id, nis, nama
+    "SELECT
+        id,
+        nis,
+        nama
      FROM siswa
      WHERE aktif = 1
      ORDER BY nama ASC"
@@ -96,28 +140,33 @@ $query_siswa = mysqli_query(
 
 
 /* =========================
-   AMBIL DATA KELAS
+   DATA KELAS
 ========================= */
 
-$query_kelas = mysqli_query(
+$kelas = mysqli_query(
     $koneksi,
-    "SELECT id, nama_kelas, jurusan, tingkat
+    "SELECT
+        id,
+        nama_kelas
      FROM kelas
-     WHERE status_aktif = 1
-     ORDER BY tingkat ASC, nama_kelas ASC"
+     ORDER BY nama_kelas ASC"
 );
 
 
 /* =========================
-   AMBIL TAHUN AJARAN
+   DATA TAHUN AJARAN
 ========================= */
 
-$query_tahun = mysqli_query(
+$tahun = mysqli_query(
     $koneksi,
-    "SELECT id, tahun, semester
+    "SELECT
+        id,
+        nama,
+        tanggal_mulai,
+        tanggal_selesai,
+        aktif
      FROM tahun_ajaran
-     WHERE status_aktif = 1
-     ORDER BY tahun DESC"
+     ORDER BY tanggal_mulai DESC"
 );
 
 
@@ -125,28 +174,24 @@ $query_tahun = mysqli_query(
    DATA PENEMPATAN
 ========================= */
 
-$query_penempatan = mysqli_query(
+$data = mysqli_query(
     $koneksi,
     "SELECT
         p.id,
         s.nis,
         s.nama AS nama_siswa,
         k.nama_kelas,
-        k.jurusan,
-        k.tingkat,
-        ta.tahun,
-        ta.semester
-
+        t.nama AS tahun_ajaran
      FROM penempatan_siswa p
 
-     LEFT JOIN siswa s
+     INNER JOIN siswa s
         ON p.siswa_id = s.id
 
-     LEFT JOIN kelas k
+     INNER JOIN kelas k
         ON p.kelas_id = k.id
 
-     LEFT JOIN tahun_ajaran ta
-        ON p.tahun_ajaran_id = ta.id
+     INNER JOIN tahun_ajaran t
+        ON p.tahun_ajaran_id = t.id
 
      ORDER BY p.id DESC"
 );
@@ -158,222 +203,271 @@ $query_penempatan = mysqli_query(
 
 <head>
 
-    <meta charset="UTF-8">
+<meta charset="UTF-8">
 
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
 
-    <title>Penempatan Siswa - Sistem Informasi Pelanggaran Siswa</title>
+<title>Penempatan Siswa</title>
 
-    <style>
+<style>
 
-        * {
-            box-sizing: border-box;
-        }
+* {
+    box-sizing: border-box;
+}
 
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #f4f6f8;
-            color: #333;
-        }
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f4f6f8;
+    color: #333;
+}
 
-        /* SIDEBAR */
 
-        .sidebar {
-            position: fixed;
-            left: 0;
-            top: 0;
-            width: 220px;
-            height: 100vh;
-            background: #687280;
-            padding: 20px 12px;
-            overflow-y: auto;
-        }
+/* =========================
+   SIDEBAR
+========================= */
 
-        .sidebar-title {
-            color: white;
-            font-size: 19px;
-            font-weight: bold;
-            margin: 0 8px 25px;
-            line-height: 1.4;
-        }
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 220px;
+    height: 100vh;
+    background: #687280;
+    padding: 20px 12px;
+    overflow-y: auto;
+}
 
-        .sidebar a {
-            display: block;
-            padding: 11px 13px;
-            margin-bottom: 5px;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 14px;
-        }
+.sidebar-title {
+    color: white;
+    font-size: 19px;
+    font-weight: bold;
+    margin: 0 8px 25px;
+    line-height: 1.4;
+}
 
-        .sidebar a:hover {
-            background: #56606d;
-        }
+.sidebar a {
+    display: block;
+    padding: 11px 13px;
+    margin-bottom: 5px;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    font-size: 14px;
+}
 
-        .sidebar a.active {
-            background: #4f5965;
-            font-weight: bold;
-        }
+.sidebar a:hover,
+.sidebar a.active {
+    background: #4f5965;
+}
 
-        .sidebar .logout {
-            margin-top: 20px;
-            background: #b42323;
-        }
+.logout {
+    margin-top: 20px;
+    background: #b42323;
+}
 
-        .sidebar .logout:hover {
-            background: #941d1d;
-        }
 
-        /* CONTENT */
+/* =========================
+   CONTENT
+========================= */
 
-        .content {
-            margin-left: 220px;
-            padding: 30px;
-        }
+.content {
+    margin-left: 220px;
+    padding: 30px;
+}
 
-        /* HEADER */
 
-        .header {
-            margin-bottom: 20px;
-        }
+/* =========================
+   HEADER
+========================= */
 
-        .header h1 {
-            margin: 0;
-            font-size: 25px;
-        }
+.header {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 7px;
+    padding: 22px;
+    margin-bottom: 20px;
 
-        .header p {
-            margin-top: 7px;
-            color: #777;
-            font-size: 14px;
-        }
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
 
-        /* BOX */
+.header h1 {
+    margin: 0;
+    font-size: 24px;
+}
 
-        .box {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 7px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
+.header p {
+    color: #777;
+    margin-bottom: 0;
+}
 
-        .box h2 {
-            margin-top: 0;
-            font-size: 19px;
-        }
 
-        /* FORM */
+/* =========================
+   BOX
+========================= */
 
-        .form-group {
-            margin-bottom: 15px;
-        }
+.box {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 7px;
+    padding: 22px;
+    margin-bottom: 20px;
+}
 
-        .form-group label {
-            display: block;
-            font-size: 13px;
-            font-weight: bold;
-            margin-bottom: 6px;
-        }
+.box h2 {
+    margin-top: 0;
+}
 
-        .form-group select {
-            width: 100%;
-            padding: 9px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            background: white;
-        }
 
-        .btn {
-            background: #087f8c;
-            color: white;
-            border: none;
-            padding: 9px 15px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px;
-        }
+/* =========================
+   TOMBOL
+========================= */
 
-        .btn:hover {
-            background: #066a74;
-        }
+.btn {
+    display: inline-block;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 5px;
+    color: white;
+    text-decoration: none;
+    cursor: pointer;
+    font-size: 14px;
+}
 
-        /* PESAN */
+.btn-tambah {
+    background: #087f5b;
+}
 
-        .pesan {
-            background: #fff3cd;
-            border: 1px solid #ffe69c;
-            color: #664d03;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 15px;
-        }
+.btn-tambah:hover {
+    background: #066b4d;
+}
 
-        /* TABLE */
+.btn-simpan {
+    background: #687280;
+}
 
-        .table-container {
-            overflow-x: auto;
-        }
+.btn-simpan:hover {
+    background: #56606d;
+}
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+.btn-batal {
+    background: #777;
+}
 
-        table th {
-            background: #087f8c;
-            color: white;
-            padding: 10px;
-            text-align: left;
-            font-size: 13px;
-        }
+.btn-hapus {
+    background: #b42323;
+}
 
-        table td {
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
-            font-size: 13px;
-        }
+.btn-hapus:hover {
+    background: #941d1d;
+}
 
-        table tr:hover {
-            background: #f7f7f7;
-        }
 
-        .hapus {
-            color: red;
-            text-decoration: none;
-        }
+/* =========================
+   FORM
+========================= */
 
-        .hapus:hover {
-            text-decoration: underline;
-        }
+.form-group {
+    margin-bottom: 16px;
+}
 
-        .kosong {
-            text-align: center;
-            color: #777;
-            padding: 20px;
-        }
+label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-weight: bold;
+}
 
-        /* RESPONSIVE */
+select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background: white;
+}
 
-        @media (max-width: 700px) {
+.form-actions {
+    margin-top: 20px;
+}
 
-            .sidebar {
-                position: relative;
-                width: 100%;
-                height: auto;
-            }
 
-            .content {
-                margin-left: 0;
-                padding: 15px;
-            }
+/* =========================
+   ERROR
+========================= */
 
-        }
+.error {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 5px;
+}
 
-    </style>
+
+/* =========================
+   TABLE
+========================= */
+
+.table-container {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th {
+    background: #687280;
+    color: white;
+    padding: 11px;
+    text-align: left;
+    font-size: 13px;
+}
+
+td {
+    padding: 11px;
+    border-bottom: 1px solid #ddd;
+    font-size: 13px;
+}
+
+tr:hover {
+    background: #f7f7f7;
+}
+
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media(max-width:700px) {
+
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+    }
+
+    .content {
+        margin-left: 0;
+        padding: 15px;
+    }
+
+    .header {
+        display: block;
+    }
+
+    .btn-tambah {
+        margin-top: 15px;
+    }
+
+}
+
+</style>
 
 </head>
 
@@ -391,81 +485,54 @@ $query_penempatan = mysqli_query(
         Siswa
     </div>
 
-
     <a href="dashboard.php">
         🏠 Dashboard
     </a>
 
+    <a href="kelola_siswa.php">
+        Data Siswa
+    </a>
 
-    <?php if ($role == 'admin') { ?>
+    <a href="kelola_guru.php">
+        Data Guru
+    </a>
 
-        <a href="kelola_siswa.php">
-             Data Siswa
-        </a>
+    <a href="kelola_kelas.php">
+        Data Kelas
+    </a>
 
-        <a href="kelola_guru.php">
-             Data Guru
-        </a>
+    <a href="kelola_tahun_ajaran.php">
+        Tahun Ajaran
+    </a>
 
-        <a href="kelola_kelas.php">
-             Data Kelas
-        </a>
+    <a href="kelola_wali_kelas.php">
+        Wali Kelas
+    </a>
 
-        <a href="kelola_tahun_ajaran.php">
-             Tahun Ajaran
-        </a>
+    <a href="penempatan_siswa.php"
+       class="active">
+        Penempatan Siswa
+    </a>
 
-        <a href="wali_kelas.php">
-             Wali Kelas
-        </a>
+    <a href="kelola_pelanggaran_kategori.php">
+        ⚠ Kategori Pelanggaran
+    </a>
 
-        <a href="penempatan_siswa.php" class="active">
-             Penempatan Siswa
-        </a>
+    <a href="pelanggaran.php">
+        Data Pelanggaran
+    </a>
 
-        <a href="kelola_pelanggaran_kategori.php">
-            ⚠ Kategori Pelanggaran
-        </a>
+    <a href="tindakan.php">
+        Data Tindakan
+    </a>
 
-        <a href="pelanggaran.php">
-             Data Pelanggaran
-        </a>
+    <a href="laporan.php">
+        Laporan
+    </a>
 
-        <a href="tindakan.php">
-             Data Tindakan
-        </a>
-
-        <a href="laporan.php">
-             Laporan
-        </a>
-
-        <a href="about_me.php">
-            ℹ About Me
-        </a>
-
-    <?php } ?>
-
-
-    <?php if ($role == 'guru') { ?>
-
-        <a href="catat_pelanggaran.php">
-             Catat Pelanggaran
-        </a>
-
-        <a href="tindakan.php">
-            Tindakan
-        </a>
-
-        <a href="riwayat.php">
-             Riwayat
-        </a>
-
-        <a href="rekap_poin.php">
-             Rekap Poin
-        </a>
-
-    <?php } ?>
-
+    <a href="about_me.php">
+        ℹ About Me
+    </a>
 
     <a href="logout.php" class="logout">
         🚪 Logout
@@ -481,23 +548,39 @@ $query_penempatan = mysqli_query(
 <div class="content">
 
 
+    <!-- HEADER -->
+
     <div class="header">
 
-        <h1>
-            Penempatan Siswa
-        </h1>
+        <div>
 
-        <p>
-            Kelola penempatan siswa ke dalam kelas dan tahun ajaran.
-        </p>
+            <h1>
+                Penempatan Siswa
+            </h1>
+
+            <p>
+                Mengatur siswa ke kelas dan tahun ajaran.
+            </p>
+
+        </div>
+
+
+        <a
+            href="penempatan_siswa.php?tambah=1"
+            class="btn btn-tambah"
+        >
+            + Tambah Penempatan
+        </a>
 
     </div>
 
 
-    <?php if (isset($pesan)) { ?>
+    <!-- ERROR -->
 
-        <div class="pesan">
-            <?= htmlspecialchars($pesan); ?>
+    <?php if (isset($error)) { ?>
+
+        <div class="error">
+            <?= htmlspecialchars($error); ?>
         </div>
 
     <?php } ?>
@@ -505,128 +588,210 @@ $query_penempatan = mysqli_query(
 
     <!-- =========================
          FORM TAMBAH
+         HANYA MUNCUL SETELAH
+         KLIK TAMBAH
     ========================= -->
 
-    <div class="box">
+    <?php if (isset($_GET['tambah']) && $_GET['tambah'] == '1') { ?>
 
-        <h2>
-            Tambah Penempatan Siswa
-        </h2>
+        <div class="box">
+
+            <h2>
+                Tambah Penempatan Siswa
+            </h2>
 
 
-        <form method="POST">
+            <form method="POST">
 
 
-            <!-- SISWA -->
+                <!-- SISWA -->
 
-            <div class="form-group">
+                <div class="form-group">
 
-                <label>
-                    Siswa
-                </label>
+                    <label>
+                        Siswa
+                    </label>
 
-                <select name="siswa_id" required>
+                    <select
+                        name="siswa_id"
+                        required
+                    >
 
-                    <option value="">
-                        -- Pilih Siswa --
-                    </option>
-
-                    <?php while ($siswa = mysqli_fetch_assoc($query_siswa)) { ?>
-
-                        <option value="<?= $siswa['id']; ?>">
-
-                            <?= htmlspecialchars($siswa['nis']); ?>
-                            -
-                            <?= htmlspecialchars($siswa['nama']); ?>
-
+                        <option value="">
+                            -- Pilih Siswa --
                         </option>
 
-                    <?php } ?>
+                        <?php
 
-                </select>
+                        if ($siswa) {
 
-            </div>
+                            while (
+                                $s = mysqli_fetch_assoc($siswa)
+                            ) {
 
+                        ?>
 
-            <!-- KELAS -->
+                            <option
+                                value="<?= $s['id']; ?>"
+                            >
 
-            <div class="form-group">
-
-                <label>
-                    Kelas
-                </label>
-
-                <select name="kelas_id" required>
-
-                    <option value="">
-                        -- Pilih Kelas --
-                    </option>
-
-                    <?php while ($kelas = mysqli_fetch_assoc($query_kelas)) { ?>
-
-                        <option value="<?= $kelas['id']; ?>">
-
-                            <?= htmlspecialchars($kelas['nama_kelas']); ?>
-
-                            -
-                            <?= htmlspecialchars($kelas['jurusan'] ?? ''); ?>
-
-                            -
-                            <?= htmlspecialchars($kelas['tingkat'] ?? ''); ?>
-
-                        </option>
-
-                    <?php } ?>
-
-                </select>
-
-            </div>
-
-
-            <!-- TAHUN AJARAN -->
-
-            <div class="form-group">
-
-                <label>
-                    Tahun Ajaran
-                </label>
-
-                <select name="tahun_ajaran_id" required>
-
-                    <option value="">
-                        -- Pilih Tahun Ajaran --
-                    </option>
-
-                    <?php while ($tahun = mysqli_fetch_assoc($query_tahun)) { ?>
-
-                        <option value="<?= $tahun['id']; ?>">
-
-                            <?= htmlspecialchars($tahun['tahun']); ?>
-
-                            <?php if (!empty($tahun['semester'])) { ?>
-
+                                <?= htmlspecialchars($s['nis']); ?>
                                 -
-                                <?= htmlspecialchars($tahun['semester']); ?>
+                                <?= htmlspecialchars($s['nama']); ?>
 
-                            <?php } ?>
+                            </option>
 
+                        <?php
+
+                            }
+
+                        }
+
+                        ?>
+
+                    </select>
+
+                </div>
+
+
+                <!-- KELAS -->
+
+                <div class="form-group">
+
+                    <label>
+                        Kelas
+                    </label>
+
+                    <select
+                        name="kelas_id"
+                        required
+                    >
+
+                        <option value="">
+                            -- Pilih Kelas --
                         </option>
 
-                    <?php } ?>
+                        <?php
 
-                </select>
+                        if ($kelas) {
 
-            </div>
+                            while (
+                                $k = mysqli_fetch_assoc($kelas)
+                            ) {
+
+                        ?>
+
+                            <option
+                                value="<?= $k['id']; ?>"
+                            >
+
+                                <?= htmlspecialchars(
+                                    $k['nama_kelas']
+                                ); ?>
+
+                            </option>
+
+                        <?php
+
+                            }
+
+                        }
+
+                        ?>
+
+                    </select>
+
+                </div>
 
 
-            <button type="submit" name="simpan" class="btn">
-                + Tambah Penempatan
-            </button>
+                <!-- TAHUN AJARAN -->
+
+                <div class="form-group">
+
+                    <label>
+                        Tahun Ajaran
+                    </label>
+
+                    <select
+                        name="tahun_ajaran_id"
+                        required
+                    >
+
+                        <option value="">
+                            -- Pilih Tahun Ajaran --
+                        </option>
+
+                        <?php
+
+                        if ($tahun) {
+
+                            while (
+                                $t = mysqli_fetch_assoc($tahun)
+                            ) {
+
+                        ?>
+
+                            <option
+                                value="<?= $t['id']; ?>"
+                            >
+
+                                <?= htmlspecialchars(
+                                    $t['nama']
+                                ); ?>
+
+                                <?php
+
+                                if ((int)$t['aktif'] === 1) {
+
+                                ?>
+
+                                    (Aktif)
+
+                                <?php } ?>
+
+                            </option>
+
+                        <?php
+
+                            }
+
+                        }
+
+                        ?>
+
+                    </select>
+
+                </div>
 
 
-        </form>
+                <!-- BUTTON -->
 
-    </div>
+                <div class="form-actions">
+
+                    <button
+                        type="submit"
+                        name="simpan"
+                        class="btn btn-simpan"
+                    >
+                        Simpan Penempatan
+                    </button>
+
+
+                    <a
+                        href="penempatan_siswa.php"
+                        class="btn btn-batal"
+                    >
+                        Batal
+                    </a>
+
+                </div>
+
+
+            </form>
+
+        </div>
+
+    <?php } ?>
 
 
     <!-- =========================
@@ -649,21 +814,10 @@ $query_penempatan = mysqli_query(
                     <tr>
 
                         <th>No</th>
-
                         <th>NIS</th>
-
                         <th>Nama Siswa</th>
-
                         <th>Kelas</th>
-
-                        <th>Jurusan</th>
-
-                        <th>Tingkat</th>
-
-                        <th>Tahun</th>
-
-                        <th>Semester</th>
-
+                        <th>Tahun Ajaran</th>
                         <th>Aksi</th>
 
                     </tr>
@@ -673,90 +827,91 @@ $query_penempatan = mysqli_query(
 
                 <tbody>
 
-                    <?php
+                <?php
 
-                    $no = 1;
+                $no = 1;
 
-                    if (
-                        $query_penempatan &&
-                        mysqli_num_rows($query_penempatan) > 0
+                if (
+                    $data &&
+                    mysqli_num_rows($data) > 0
+                ) {
+
+                    while (
+                        $row = mysqli_fetch_assoc($data)
                     ) {
 
-                        while (
-                            $row = mysqli_fetch_assoc($query_penempatan)
-                        ) {
+                ?>
 
-                    ?>
+                    <tr>
 
-                        <tr>
+                        <td>
+                            <?= $no++; ?>
+                        </td>
 
-                            <td>
-                                <?= $no++; ?>
-                            </td>
+                        <td>
+                            <?= htmlspecialchars(
+                                $row['nis']
+                            ); ?>
+                        </td>
 
-                            <td>
-                                <?= htmlspecialchars($row['nis'] ?? '-'); ?>
-                            </td>
+                        <td>
 
-                            <td>
-                                <b>
-                                    <?= htmlspecialchars($row['nama_siswa'] ?? '-'); ?>
-                                </b>
-                            </td>
+                            <b>
+                                <?= htmlspecialchars(
+                                    $row['nama_siswa']
+                                ); ?>
+                            </b>
 
-                            <td>
-                                <?= htmlspecialchars($row['nama_kelas'] ?? '-'); ?>
-                            </td>
+                        </td>
 
-                            <td>
-                                <?= htmlspecialchars($row['jurusan'] ?? '-'); ?>
-                            </td>
+                        <td>
+                            <?= htmlspecialchars(
+                                $row['nama_kelas']
+                            ); ?>
+                        </td>
 
-                            <td>
-                                <?= htmlspecialchars($row['tingkat'] ?? '-'); ?>
-                            </td>
+                        <td>
+                            <?= htmlspecialchars(
+                                $row['tahun_ajaran']
+                            ); ?>
+                        </td>
 
-                            <td>
-                                <?= htmlspecialchars($row['tahun'] ?? '-'); ?>
-                            </td>
+                        <td>
 
-                            <td>
-                                <?= htmlspecialchars($row['semester'] ?? '-'); ?>
-                            </td>
+                            <a
+                                href="penempatan_siswa.php?hapus=<?= $row['id']; ?>"
+                                class="btn btn-hapus"
+                                onclick="return confirm('Yakin ingin menghapus penempatan ini?')"
+                            >
+                                Hapus
+                            </a>
 
-                            <td>
+                        </td>
 
-                                <a
-                                    href="penempatan_siswa.php?hapus=<?= $row['id']; ?>"
-                                    class="hapus"
-                                    onclick="return confirm('Yakin ingin menghapus data ini?');"
-                                >
-                                    Hapus
-                                </a>
+                    </tr>
 
-                            </td>
+                <?php
 
-                        </tr>
+                    }
 
-                    <?php
+                } else {
 
-                        }
+                ?>
 
-                    } else {
+                    <tr>
 
-                    ?>
+                        <td
+                            colspan="6"
+                            style="text-align:center;padding:25px;"
+                        >
 
-                        <tr>
+                            Belum ada data penempatan siswa.
 
-                            <td colspan="9" class="kosong">
+                        </td>
 
-                                Belum ada data penempatan siswa.
+                    </tr>
 
-                            </td>
-
-                        </tr>
-
-                    <?php } ?>
+                <?php } ?>
 
                 </tbody>
 

@@ -1,114 +1,208 @@
+
 <?php
 
-require_once "cek_role.php";
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-wajib_role(['admin', 'guru']);
+require_once "database.php";
+require_once "auth.php";
 
-include "database.php";
+/*
+|--------------------------------------------------------------------------
+| CEK AKSES
+|--------------------------------------------------------------------------
+| Admin, Guru, dan Wali Kelas boleh menambah tindakan.
+*/
 
-
-// =========================
-// PROSES SIMPAN
-// =========================
-
-if (isset($_POST['simpan'])) {
-
-    $pelanggaran_id = $_POST['pelanggaran_id'];
-    $tanggal        = $_POST['tanggal'];
-    $tindakan       = $_POST['tindakan'];
-    $petugas_id     = !empty($_POST['petugas_id'])
-                        ? $_POST['petugas_id']
-                        : NULL;
-    $catatan        = $_POST['catatan'];
+hanyaRole(['admin', 'guru', 'wali_kelas']);
 
 
-    // Simpan menggunakan prepared statement
+/*
+|--------------------------------------------------------------------------
+| PROSES SIMPAN
+|--------------------------------------------------------------------------
+*/
 
-    $stmt = mysqli_prepare($koneksi, "
+$pesan = '';
 
-        INSERT INTO tindakan
-        (
-            pelanggaran_id,
-            tanggal,
-            tindakan,
-            petugas_id,
-            catatan
-        )
-        VALUES (?, ?, ?, ?, ?)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    ");
-
-
-    mysqli_stmt_bind_param(
-        $stmt,
-        "issis",
-        $pelanggaran_id,
-        $tanggal,
-        $tindakan,
-        $petugas_id,
-        $catatan
+    $pelanggaran_id = filter_input(
+        INPUT_POST,
+        'pelanggaran_id',
+        FILTER_VALIDATE_INT
     );
 
+    $tanggal = $_POST['tanggal'] ?? '';
+    $tindakan = trim($_POST['tindakan'] ?? '');
+    $petugas_id = filter_input(
+        INPUT_POST,
+        'petugas_id',
+        FILTER_VALIDATE_INT
+    );
 
-    if (mysqli_stmt_execute($stmt)) {
+    $catatan = trim($_POST['catatan'] ?? '');
 
-        header("Location: tindakan.php");
 
-        exit;
+    /*
+    |--------------------------------------------------------------------------
+    | VALIDASI
+    |--------------------------------------------------------------------------
+    */
+
+    if (
+        !$pelanggaran_id ||
+        empty($tanggal) ||
+        empty($tindakan)
+    ) {
+
+        $pesan = "Data wajib diisi dengan lengkap.";
 
     } else {
 
-        $error = mysqli_stmt_error($stmt);
+        /*
+        |--------------------------------------------------------------------------
+        | CEK PELANGGARAN
+        |--------------------------------------------------------------------------
+        */
 
+        $stmt = $koneksi->prepare(
+            "SELECT id
+             FROM pelanggaran
+             WHERE id = ?"
+        );
+
+        $stmt->bind_param(
+            "i",
+            $pelanggaran_id
+        );
+
+        $stmt->execute();
+
+        $cek = $stmt->get_result();
+
+        if ($cek->num_rows == 0) {
+
+            $pesan = "Data pelanggaran tidak ditemukan.";
+
+        } else {
+
+            /*
+            |--------------------------------------------------------------------------
+            | PETUGAS
+            |--------------------------------------------------------------------------
+            */
+
+            if (!$petugas_id) {
+                $petugas_id = null;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | SIMPAN TINDAKAN
+            |--------------------------------------------------------------------------
+            */
+
+            $stmt = $koneksi->prepare(
+                "INSERT INTO tindakan
+                (
+                    pelanggaran_id,
+                    tanggal,
+                    tindakan,
+                    petugas_id,
+                    catatan
+                )
+                VALUES (?, ?, ?, ?, ?)"
+            );
+
+            $stmt->bind_param(
+                "issis",
+                $pelanggaran_id,
+                $tanggal,
+                $tindakan,
+                $petugas_id,
+                $catatan
+            );
+
+            if ($stmt->execute()) {
+
+                header("Location: tindakan.php");
+                exit;
+
+            } else {
+
+                $pesan = "Gagal menyimpan tindakan: " . $stmt->error;
+            }
+        }
     }
-
 }
 
 
-// =========================
-// DATA PELANGGARAN
-// =========================
+/*
+|--------------------------------------------------------------------------
+| DATA PELANGGARAN
+|--------------------------------------------------------------------------
+*/
 
-$query_pelanggaran = mysqli_query($koneksi, "
-
+$pelanggaran = mysqli_query(
+    $koneksi,
+    "
     SELECT
-        pelanggaran.id,
+        p.id,
+        p.tanggal,
+        s.nama AS nama_siswa,
+        s.nis,
+        jp.nama AS nama_pelanggaran
+    FROM pelanggaran p
 
-        siswa.nama AS nama_siswa,
+    INNER JOIN siswa s
+        ON p.siswa_id = s.id
 
-        jenis_pelanggaran.nama AS jenis_pelanggaran
+    INNER JOIN jenis_pelanggaran jp
+        ON p.jenis_id = jp.id
 
-    FROM pelanggaran
+    ORDER BY p.tanggal DESC
+    "
+);
 
-    JOIN siswa
-        ON pelanggaran.siswa_id = siswa.id
+if (!$pelanggaran) {
 
-    JOIN jenis_pelanggaran
-        ON pelanggaran.jenis_id = jenis_pelanggaran.id
-
-    ORDER BY pelanggaran.id DESC
-
-");
+    die(
+        "Query pelanggaran error: " .
+        mysqli_error($koneksi)
+    );
+}
 
 
-// =========================
-// DATA PETUGAS
-// =========================
+/*
+|--------------------------------------------------------------------------
+| DATA PETUGAS
+|--------------------------------------------------------------------------
+| Pakai email, bukan username.
+|--------------------------------------------------------------------------
+*/
 
-$query_petugas = mysqli_query($koneksi, "
-
+$petugas = mysqli_query(
+    $koneksi,
+    "
     SELECT
         id,
         nama,
-        username
-
+        email,
+        role
     FROM users
-
     WHERE aktif = 1
-
     ORDER BY nama ASC
+    "
+);
 
-");
+if (!$petugas) {
+
+    die(
+        "Query petugas error: " .
+        mysqli_error($koneksi)
+    );
+}
 
 ?>
 
@@ -118,569 +212,292 @@ $query_petugas = mysqli_query($koneksi, "
 
 <head>
 
-    <meta charset="UTF-8">
-
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
-
-    <title>Tambah Tindakan</title>
-
-
-    <style>
-
-        * {
-            box-sizing: border-box;
-        }
-
-
-        body {
-
-            margin: 0;
-
-            font-family: Arial, sans-serif;
-
-            background: #f4f6f8;
-
-            color: #333;
-
-        }
-
-
-        /* =========================
-           HEADER
-        ========================= */
-
-        .header {
-
-            background: #687280;
-
-            color: white;
-
-            padding: 18px 30px;
-
-            display: flex;
-
-            justify-content: space-between;
-
-            align-items: center;
-
-        }
-
-
-        .header b {
-
-            font-size: 18px;
-
-        }
-
-
-        .header a {
-
-            color: white;
-
-            text-decoration: none;
-
-            background: #56606d;
-
-            padding: 8px 14px;
-
-            border-radius: 4px;
-
-            font-size: 13px;
-
-        }
-
-
-        .header a:hover {
-
-            background: #454e59;
-
-        }
-
-
-        /* =========================
-           CONTAINER
-        ========================= */
-
-        .container {
-
-            width: 95%;
-
-            max-width: 900px;
-
-            margin: 30px auto;
-
-        }
-
-
-        /* =========================
-           BOX
-        ========================= */
-
-        .box {
-
-            background: white;
-
-            border: 1px solid #ddd;
-
-            border-radius: 6px;
-
-            padding: 25px;
-
-        }
-
-
-        .box h2 {
-
-            margin-top: 0;
-
-            margin-bottom: 25px;
-
-            font-size: 22px;
-
-        }
-
-
-        /* =========================
-           FORM
-        ========================= */
-
-        .form-group {
-
-            margin-bottom: 18px;
-
-        }
-
-
-        .form-group label {
-
-            display: block;
-
-            margin-bottom: 7px;
-
-            font-weight: bold;
-
-            font-size: 14px;
-
-        }
-
-
-        input,
-        select,
-        textarea {
-
-            width: 100%;
-
-            padding: 10px;
-
-            border: 1px solid #ccc;
-
-            border-radius: 4px;
-
-            font-family: Arial, sans-serif;
-
-            font-size: 14px;
-
-            background: white;
-
-        }
-
-
-        input:focus,
-        select:focus,
-        textarea:focus {
-
-            outline: none;
-
-            border-color: #687280;
-
-        }
-
-
-        textarea {
-
-            min-height: 100px;
-
-            resize: vertical;
-
-        }
-
-
-        /* =========================
-           BUTTON
-        ========================= */
-
-        .form-button {
-
-            margin-top: 10px;
-
-        }
-
-
-        .btn-simpan {
-
-            border: none;
-
-            background: #687280;
-
-            color: white;
-
-            padding: 10px 18px;
-
-            border-radius: 4px;
-
-            cursor: pointer;
-
-            font-size: 14px;
-
-        }
-
-
-        .btn-simpan:hover {
-
-            background: #56606d;
-
-        }
-
-
-        .btn-batal {
-
-            display: inline-block;
-
-            margin-left: 8px;
-
-            background: #ddd;
-
-            color: #333;
-
-            text-decoration: none;
-
-            padding: 9px 16px;
-
-            border-radius: 4px;
-
-            font-size: 14px;
-
-        }
-
-
-        .btn-batal:hover {
-
-            background: #ccc;
-
-        }
-
-
-        /* =========================
-           ERROR
-        ========================= */
-
-        .error {
-
-            background: #f8d7da;
-
-            color: #842029;
-
-            border: 1px solid #f1aeb5;
-
-            padding: 10px;
-
-            margin-bottom: 20px;
-
-            border-radius: 4px;
-
-        }
-
-
-        /* =========================
-           RESPONSIVE
-        ========================= */
-
-        @media (max-width: 700px) {
-
-            .header {
-
-                padding: 15px;
-
-            }
-
-
-            .header b {
-
-                font-size: 14px;
-
-            }
-
-
-            .container {
-
-                width: 96%;
-
-                margin: 20px auto;
-
-            }
-
-
-            .box {
-
-                padding: 18px;
-
-            }
-
-        }
-
-    </style>
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
+<title>Tambah Tindakan</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f4f4f4;
+    color: #333;
+}
+
+.header {
+    background: #687280;
+    color: white;
+    padding: 18px 30px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.header h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.kembali {
+    background: #56606d;
+    color: white;
+    text-decoration: none;
+    padding: 9px 14px;
+    border-radius: 5px;
+}
+
+.container {
+    width: 90%;
+    max-width: 800px;
+    margin: 30px auto;
+}
+
+.box {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 7px;
+    padding: 25px;
+}
+
+.box h1 {
+    margin-top: 0;
+    font-size: 23px;
+}
+
+.pesan {
+    background: #fff3cd;
+    border: 1px solid #ffe69c;
+    color: #664d03;
+    padding: 12px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 18px;
+}
+
+label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 7px;
+}
+
+select,
+input,
+textarea {
+    width: 100%;
+    padding: 11px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+textarea {
+    resize: vertical;
+}
+
+.btn {
+    background: #687280;
+    color: white;
+    border: none;
+    padding: 11px 18px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn:hover {
+    background: #56606d;
+}
+
+</style>
 
 </head>
 
-
 <body>
-
-
-<!-- =========================
-     HEADER
-========================= -->
 
 <div class="header">
 
-    <b>
+    <h2>
         SISTEM INFORMASI PELANGGARAN SISWA
-    </b>
+    </h2>
 
-
-    <a href="tindakan.php">
+    <a
+        href="tindakan.php"
+        class="kembali"
+    >
         ← Kembali
     </a>
 
 </div>
 
 
-
-<!-- =========================
-     CONTENT
-========================= -->
-
 <div class="container">
 
+<div class="box">
 
-    <div class="box">
+<h1>
+    Tambah Tindakan
+</h1>
 
+<?php if ($pesan != ''): ?>
 
-        <h2>
-            Tambah Tindakan
-        </h2>
-
-
-        <?php if (isset($error)) { ?>
-
-            <div class="error">
-
-                Gagal menyimpan data:
-                <?= htmlspecialchars($error); ?>
-
-            </div>
-
-        <?php } ?>
-
-
-        <form method="POST">
-
-
-            <!-- PELANGGARAN -->
-
-            <div class="form-group">
-
-                <label>
-                    Pelanggaran Siswa
-                </label>
-
-
-                <select
-                    name="pelanggaran_id"
-                    required
-                >
-
-                    <option value="">
-                        -- Pilih Pelanggaran --
-                    </option>
-
-
-                    <?php
-
-                    while (
-                        $pel = mysqli_fetch_assoc(
-                            $query_pelanggaran
-                        )
-                    ) {
-
-                    ?>
-
-                        <option
-                            value="<?= $pel['id']; ?>"
-                        >
-
-                            <?= htmlspecialchars(
-                                $pel['nama_siswa']
-                            ); ?>
-
-                            -
-                            
-                            <?= htmlspecialchars(
-                                $pel['jenis_pelanggaran']
-                            ); ?>
-
-                        </option>
-
-                    <?php } ?>
-
-                </select>
-
-            </div>
-
-
-
-            <!-- TANGGAL -->
-
-            <div class="form-group">
-
-                <label>
-                    Tanggal
-                </label>
-
-
-                <input
-                    type="date"
-                    name="tanggal"
-                    value="<?= date('Y-m-d'); ?>"
-                    required
-                >
-
-            </div>
-
-
-
-            <!-- TINDAKAN -->
-
-            <div class="form-group">
-
-                <label>
-                    Tindakan
-                </label>
-
-
-                <input
-                    type="text"
-                    name="tindakan"
-                    placeholder="Masukkan tindakan"
-                    required
-                >
-
-            </div>
-
-
-
-            <!-- PETUGAS -->
-
-            <div class="form-group">
-
-                <label>
-                    Petugas
-                </label>
-
-
-                <select
-                    name="petugas_id"
-                >
-
-                    <option value="">
-                        -- Tidak Dipilih --
-                    </option>
-
-
-                    <?php
-
-                    while (
-                        $petugas = mysqli_fetch_assoc(
-                            $query_petugas
-                        )
-                    ) {
-
-                    ?>
-
-                        <option
-                            value="<?= $petugas['id']; ?>"
-                        >
-
-                            <?= htmlspecialchars(
-                                $petugas['nama']
-                            ); ?>
-
-                            -
-                            
-                            <?= htmlspecialchars(
-                                $petugas['username']
-                            ); ?>
-
-                        </option>
-
-                    <?php } ?>
-
-                </select>
-
-            </div>
-
-
-
-            <!-- CATATAN -->
-
-            <div class="form-group">
-
-                <label>
-                    Catatan
-                </label>
-
-
-                <textarea
-                    name="catatan"
-                    placeholder="Masukkan catatan jika diperlukan"
-                ></textarea>
-
-            </div>
-
-
-
-            <!-- BUTTON -->
-
-            <div class="form-button">
-
-                <button
-                    type="submit"
-                    name="simpan"
-                    class="btn-simpan"
-                >
-                    Simpan
-                </button>
-
-
-                <a
-                    href="tindakan.php"
-                    class="btn-batal"
-                >
-                    Batal
-                </a>
-
-            </div>
-
-
-        </form>
-
-
+    <div class="pesan">
+        <?= htmlspecialchars($pesan); ?>
     </div>
 
+<?php endif; ?>
+
+
+<form method="POST">
+
+
+<div class="form-group">
+
+<label>
+    Pelanggaran
+</label>
+
+<select
+    name="pelanggaran_id"
+    required
+>
+
+<option value="">
+    -- Pilih Pelanggaran --
+</option>
+
+<?php while ($p = mysqli_fetch_assoc($pelanggaran)): ?>
+
+<option value="<?= (int)$p['id']; ?>">
+
+<?= htmlspecialchars($p['nis']); ?>
+ -
+<?= htmlspecialchars($p['nama_siswa']); ?>
+
+ -
+<?= htmlspecialchars($p['nama_pelanggaran']); ?>
+
+ -
+<?= htmlspecialchars($p['tanggal']); ?>
+
+</option>
+
+<?php endwhile; ?>
+
+</select>
 
 </div>
 
 
+<div class="form-group">
+
+<label>
+    Tanggal Tindakan
+</label>
+
+<input
+    type="date"
+    name="tanggal"
+    value="<?= date('Y-m-d'); ?>"
+    required
+>
+
+</div>
+
+
+<div class="form-group">
+
+<label>
+    Tindakan
+</label>
+
+<textarea
+    name="tindakan"
+    rows="4"
+    placeholder="Contoh: Teguran, pembinaan, pemanggilan orang tua, dll."
+    required
+></textarea>
+
+</div>
+
+
+<div class="form-group">
+
+<label>
+    Petugas
+</label>
+
+<select
+    name="petugas_id"
+>
+
+<option value="">
+    -- Pilih Petugas --
+</option>
+
+<?php while ($u = mysqli_fetch_assoc($petugas)): ?>
+
+<option value="<?= (int)$u['id']; ?>">
+
+<?= htmlspecialchars($u['nama']); ?>
+ -
+<?= htmlspecialchars($u['email']); ?>
+ -
+<?= htmlspecialchars($u['role']); ?>
+
+</option>
+
+<?php endwhile; ?>
+
+</select>
+
+</div>
+
+
+<div class="form-group">
+
+<label>
+    Catatan
+</label>
+
+<textarea
+    name="catatan"
+    rows="4"
+    placeholder="Catatan tambahan"
+></textarea>
+
+</div>
+
+
+<button
+    type="submit"
+    class="btn"
+>
+    Simpan Tindakan
+</button>
+
+
+</form>
+
+</div>
+
+</div>
+
 </body>
 
 </html>
+```

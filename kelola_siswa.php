@@ -1,11 +1,32 @@
 <?php
+
 session_start();
-include "database.php";
 
 if (!isset($_SESSION['login'])) {
     header("Location: login.php");
     exit;
 }
+
+include "database.php";
+
+$role = $_SESSION['role'] ?? '';
+
+/* =========================
+   CEK ADMIN
+========================= */
+
+if ($role != 'admin') {
+    echo "Akses ditolak.";
+    exit;
+}
+
+
+/* =========================
+   TAMPILKAN FORM TAMBAH
+========================= */
+
+$tambah = isset($_GET['tambah']) && $_GET['tambah'] == '1';
+
 
 /* =========================
    TAMBAH DATA SISWA
@@ -13,67 +34,141 @@ if (!isset($_SESSION['login'])) {
 
 if (isset($_POST['simpan'])) {
 
-    $nis = mysqli_real_escape_string($koneksi, $_POST['nis']);
-    $nama = mysqli_real_escape_string($koneksi, $_POST['nama']);
-    $jenis_kelamin = mysqli_real_escape_string($koneksi, $_POST['jenis_kelamin']);
-    $alamat = mysqli_real_escape_string($koneksi, $_POST['alamat']);
-    $no_hp_ortu = mysqli_real_escape_string($koneksi, $_POST['no_hp_ortu']);
+    $nis = trim($_POST['nis'] ?? '');
+    $nama = trim($_POST['nama'] ?? '');
+    $jenis_kelamin = trim($_POST['jenis_kelamin'] ?? '');
+    $alamat = trim($_POST['alamat'] ?? '');
+    $no_hp_ortu = trim($_POST['no_hp_ortu'] ?? '');
 
-    $query = mysqli_query(
-        $koneksi,
-        "INSERT INTO siswa
-        (nis, nama, jenis_kelamin, alamat, no_hp_ortu, aktif)
-        VALUES
-        ('$nis', '$nama', '$jenis_kelamin', '$alamat', '$no_hp_ortu', 1)"
-    );
+    if ($nis == '' || $nama == '') {
 
-    if ($query) {
-        header("Location: kelola_siswa.php");
-        exit;
+        $error = "NIS dan nama wajib diisi.";
+        $tambah = true;
+
     } else {
-        $error = mysqli_error($koneksi);
+
+        $nis_db = mysqli_real_escape_string($koneksi, $nis);
+        $nama_db = mysqli_real_escape_string($koneksi, $nama);
+        $jk_db = mysqli_real_escape_string($koneksi, $jenis_kelamin);
+        $alamat_db = mysqli_real_escape_string($koneksi, $alamat);
+        $hp_db = mysqli_real_escape_string($koneksi, $no_hp_ortu);
+
+        /* CEK NIS */
+
+        $cek = mysqli_query(
+            $koneksi,
+            "SELECT id
+             FROM siswa
+             WHERE nis = '$nis_db'
+             LIMIT 1"
+        );
+
+        if (mysqli_num_rows($cek) > 0) {
+
+            $error = "NIS tersebut sudah digunakan.";
+            $tambah = true;
+
+        } else {
+
+            $query = mysqli_query(
+                $koneksi,
+                "INSERT INTO siswa
+                (
+                    nis,
+                    nama,
+                    jenis_kelamin,
+                    alamat,
+                    no_hp_ortu,
+                    aktif
+                )
+                VALUES
+                (
+                    '$nis_db',
+                    '$nama_db',
+                    '$jk_db',
+                    '$alamat_db',
+                    '$hp_db',
+                    1
+                )"
+            );
+
+            if ($query) {
+
+                header("Location: kelola_siswa.php");
+                exit;
+
+            } else {
+
+                $error = "Gagal menambahkan siswa: "
+                       . mysqli_error($koneksi);
+
+                $tambah = true;
+            }
+        }
     }
 }
 
+
 /* =========================
-   HAPUS DATA
+   HAPUS DATA SISWA
 ========================= */
 
 if (isset($_GET['hapus'])) {
 
     $id = intval($_GET['hapus']);
 
-    mysqli_query(
-        $koneksi,
-        "DELETE FROM siswa WHERE id = $id"
-    );
+    if ($id > 0) {
+
+        mysqli_query(
+            $koneksi,
+            "DELETE FROM siswa
+             WHERE id = $id"
+        );
+    }
 
     header("Location: kelola_siswa.php");
     exit;
 }
 
+
 /* =========================
-   AMBIL DATA
+   AMBIL DATA SISWA
 ========================= */
 
 $data = mysqli_query(
     $koneksi,
-    "SELECT * FROM siswa ORDER BY id DESC"
+    "SELECT
+        id,
+        nis,
+        nama,
+        jenis_kelamin,
+        alamat,
+        no_hp_ortu,
+        aktif
+     FROM siswa
+     ORDER BY id DESC"
 );
 
 ?>
 
 <!DOCTYPE html>
+
 <html lang="id">
 
 <head>
 
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
 
 <title>Data Siswa</title>
 
 <style>
+
+/* =========================
+   DASAR
+========================= */
 
 * {
     box-sizing: border-box;
@@ -86,7 +181,10 @@ body {
     color: #333;
 }
 
-/* SIDEBAR */
+
+/* =========================
+   SIDEBAR
+========================= */
 
 .sidebar {
     position: fixed;
@@ -96,6 +194,7 @@ body {
     height: 100vh;
     background: #687280;
     padding: 20px 12px;
+    overflow-y: auto;
 }
 
 .sidebar-title {
@@ -116,13 +215,9 @@ body {
     font-size: 14px;
 }
 
-.sidebar a:hover {
-    background: #56606d;
-}
-
+.sidebar a:hover,
 .sidebar a.active {
     background: #4f5965;
-    font-weight: bold;
 }
 
 .logout {
@@ -130,20 +225,22 @@ body {
     background: #b42323;
 }
 
-/* CONTENT */
+
+/* =========================
+   CONTENT
+========================= */
 
 .content {
     margin-left: 220px;
     padding: 30px;
 }
 
-/* HEADER */
-
-.header {
+.header,
+.box {
     background: white;
     border: 1px solid #ddd;
     border-radius: 7px;
-    padding: 20px;
+    padding: 22px;
     margin-bottom: 20px;
 }
 
@@ -153,26 +250,29 @@ body {
 }
 
 .header p {
-    margin: 7px 0 0;
     color: #777;
 }
 
-/* BOX */
 
-.box {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 22px;
+/* =========================
+   BAGIAN ATAS DATA
+========================= */
+
+.data-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 20px;
 }
 
-.box h2 {
-    margin-top: 0;
-    font-size: 18px;
+.data-header h2 {
+    margin: 0;
 }
 
-/* FORM */
+
+/* =========================
+   FORM
+========================= */
 
 .form-grid {
     display: grid;
@@ -208,21 +308,81 @@ textarea {
     resize: vertical;
 }
 
-button {
-    margin-top: 15px;
-    padding: 10px 18px;
+
+/* =========================
+   TOMBOL
+========================= */
+
+.btn {
+    display: inline-block;
+    padding: 9px 14px;
     border: none;
     border-radius: 5px;
-    background: #687280;
     color: white;
+    text-decoration: none;
     cursor: pointer;
+    font-size: 13px;
 }
 
-button:hover {
+.btn-tambah {
+    background: #087f5b;
+}
+
+.btn-tambah:hover {
+    background: #066b4d;
+}
+
+.btn-simpan {
+    background: #687280;
+}
+
+.btn-simpan:hover {
     background: #56606d;
 }
 
-/* TABLE */
+.btn-batal {
+    background: #777;
+    margin-left: 5px;
+}
+
+.btn-batal:hover {
+    background: #555;
+}
+
+.btn-edit {
+    background: #086177;
+}
+
+.btn-edit:hover {
+    background: #064d5f;
+}
+
+.btn-hapus {
+    background: #b42323;
+}
+
+.btn-hapus:hover {
+    background: #941d1d;
+}
+
+
+/* =========================
+   ERROR
+========================= */
+
+.error {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 5px;
+}
+
+
+/* =========================
+   TABEL
+========================= */
 
 .table-container {
     overflow-x: auto;
@@ -251,14 +411,10 @@ tr:hover {
     background: #f7f7f7;
 }
 
-.btn-hapus {
-    color: white;
-    background: #b42323;
-    padding: 6px 10px;
-    text-decoration: none;
-    border-radius: 4px;
-    font-size: 12px;
-}
+
+/* =========================
+   RESPONSIVE
+========================= */
 
 @media(max-width:700px) {
 
@@ -277,49 +433,61 @@ tr:hover {
         grid-template-columns: 1fr;
     }
 
+    .data-header {
+        display: block;
+    }
+
+    .data-header .btn {
+        margin-top: 10px;
+    }
+
 }
 
 </style>
 
 </head>
 
+
 <body>
 
-<!-- SIDEBAR -->
+
+<!-- =========================
+     SIDEBAR
+========================= -->
 
 <div class="sidebar">
 
     <div class="sidebar-title">
-         Pelanggaran<br>
+        ⚖ Pelanggaran<br>
         Siswa
     </div>
 
     <a href="dashboard.php">
-         Dashboard
+        🏠 Dashboard
     </a>
 
     <a href="kelola_siswa.php" class="active">
-         Data Siswa
+        Data Siswa
     </a>
 
     <a href="kelola_guru.php">
-         Data Guru
+        Data Guru
     </a>
 
     <a href="kelola_kelas.php">
-         Data Kelas
+        Data Kelas
     </a>
 
     <a href="kelola_tahun_ajaran.php">
-         Tahun Ajaran
+        Tahun Ajaran
     </a>
 
     <a href="kelola_wali_kelas.php">
-         Wali Kelas
+        Wali Kelas
     </a>
 
     <a href="penempatan_siswa.php">
-         Penempatan Siswa
+        Penempatan Siswa
     </a>
 
     <a href="kelola_pelanggaran_kategori.php">
@@ -327,15 +495,15 @@ tr:hover {
     </a>
 
     <a href="pelanggaran.php">
-         Data Pelanggaran
+        Data Pelanggaran
     </a>
 
     <a href="tindakan.php">
-         Data Tindakan
+        Data Tindakan
     </a>
 
     <a href="laporan.php">
-         Laporan
+        Laporan
     </a>
 
     <a href="about_me.php">
@@ -349,190 +517,360 @@ tr:hover {
 </div>
 
 
-<!-- CONTENT -->
+<!-- =========================
+     CONTENT
+========================= -->
 
 <div class="content">
 
+
+    <!-- HEADER -->
+
     <div class="header">
 
-        <h1>Data Siswa</h1>
+        <h1>
+            Data Siswa
+        </h1>
 
-        <p>Kelola data siswa dalam sistem.</p>
+        <p>
+            Kelola data siswa dalam sistem.
+        </p>
 
     </div>
 
 
-    <!-- FORM -->
+    <?php if (isset($error)) { ?>
 
-    <div class="box">
+        <div class="error">
 
-        <h2>Tambah Data Siswa</h2>
+            <?= htmlspecialchars($error); ?>
 
-        <?php if (isset($error)) { ?>
+        </div>
 
-            <p style="color:red;">
-                <?= htmlspecialchars($error); ?>
-            </p>
-
-        <?php } ?>
-
-        <form method="POST">
-
-            <div class="form-grid">
-
-                <div class="form-group">
-
-                    <label>NIS</label>
-
-                    <input
-                        type="text"
-                        name="nis"
-                        required
-                    >
-
-                </div>
+    <?php } ?>
 
 
-                <div class="form-group">
+    <!-- =========================
+         FORM TAMBAH
+         HANYA MUNCUL JIKA
+         ?tambah=1
+    ========================= -->
 
-                    <label>Nama</label>
+    <?php if ($tambah) { ?>
 
-                    <input
-                        type="text"
-                        name="nama"
-                        required
-                    >
+        <div class="box">
 
-                </div>
+            <div class="data-header">
 
-
-                <div class="form-group">
-
-                    <label>Jenis Kelamin</label>
-
-                    <select name="jenis_kelamin">
-
-                        <option value="">-- Pilih --</option>
-
-                        <option value="L">
-                            Laki-laki
-                        </option>
-
-                        <option value="P">
-                            Perempuan
-                        </option>
-
-                    </select>
-
-                </div>
-
-
-                <div class="form-group">
-
-                    <label>No HP Orang Tua</label>
-
-                    <input
-                        type="text"
-                        name="no_hp_ortu"
-                    >
-
-                </div>
-
-
-                <div class="form-group full">
-
-                    <label>Alamat</label>
-
-                    <textarea
-                        name="alamat"
-                        rows="3"
-                    ></textarea>
-
-                </div>
+                <h2>
+                    Tambah Data Siswa
+                </h2>
 
             </div>
 
-            <button type="submit" name="simpan">
-                Simpan
-            </button>
 
-        </form>
+            <form method="POST">
 
-    </div>
+                <div class="form-grid">
 
 
-    <!-- DATA -->
+                    <div class="form-group">
+
+                        <label>
+                            NIS
+                        </label>
+
+                        <input
+                            type="text"
+                            name="nis"
+                            placeholder="Masukkan NIS"
+                            required
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label>
+                            Nama
+                        </label>
+
+                        <input
+                            type="text"
+                            name="nama"
+                            placeholder="Masukkan nama siswa"
+                            required
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label>
+                            Jenis Kelamin
+                        </label>
+
+                        <select name="jenis_kelamin">
+
+                            <option value="">
+                                -- Pilih --
+                            </option>
+
+                            <option value="L">
+                                Laki-laki
+                            </option>
+
+                            <option value="P">
+                                Perempuan
+                            </option>
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label>
+                            No HP Orang Tua
+                        </label>
+
+                        <input
+                            type="text"
+                            name="no_hp_ortu"
+                            placeholder="Masukkan nomor HP"
+                        >
+
+                    </div>
+
+
+                    <div class="form-group full">
+
+                        <label>
+                            Alamat
+                        </label>
+
+                        <textarea
+                            name="alamat"
+                            rows="3"
+                            placeholder="Masukkan alamat"
+                        ></textarea>
+
+                    </div>
+
+
+                </div>
+
+
+                <button
+                    type="submit"
+                    name="simpan"
+                    class="btn btn-simpan"
+                >
+                    Simpan Siswa
+                </button>
+
+
+                <a
+                    href="kelola_siswa.php"
+                    class="btn btn-batal"
+                >
+                    Batal
+                </a>
+
+
+            </form>
+
+        </div>
+
+    <?php } ?>
+
+
+    <!-- =========================
+         DAFTAR SISWA
+    ========================= -->
 
     <div class="box">
 
-        <h2>Daftar Siswa</h2>
+
+        <div class="data-header">
+
+            <h2>
+                Daftar Siswa
+            </h2>
+
+
+            <?php if (!$tambah) { ?>
+
+                <a
+                    href="kelola_siswa.php?tambah=1"
+                    class="btn btn-tambah"
+                >
+                    + Tambah Siswa
+                </a>
+
+            <?php } ?>
+
+
+        </div>
+
 
         <div class="table-container">
 
             <table>
 
-                <tr>
+                <thead>
 
-                    <th>No</th>
-                    <th>NIS</th>
-                    <th>Nama</th>
-                    <th>JK</th>
-                    <th>No HP Orang Tua</th>
-                    <th>Aksi</th>
+                    <tr>
 
-                </tr>
+                        <th>
+                            No
+                        </th>
+
+                        <th>
+                            NIS
+                        </th>
+
+                        <th>
+                            Nama
+                        </th>
+
+                        <th>
+                            JK
+                        </th>
+
+                        <th>
+                            No HP Orang Tua
+                        </th>
+
+                        <th>
+                            Aksi
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody>
+
 
                 <?php
 
                 $no = 1;
 
-                while ($row = mysqli_fetch_assoc($data)) {
+                if (
+                    $data &&
+                    mysqli_num_rows($data) > 0
+                ) {
+
+                    while (
+                        $row = mysqli_fetch_assoc($data)
+                    ) {
 
                 ?>
 
-                <tr>
+                    <tr>
 
-                    <td><?= $no++; ?></td>
+                        <td>
+                            <?= $no++; ?>
+                        </td>
 
-                    <td>
-                        <?= htmlspecialchars($row['nis']); ?>
-                    </td>
 
-                    <td>
-                        <?= htmlspecialchars($row['nama']); ?>
-                    </td>
+                        <td>
+                            <?= htmlspecialchars(
+                                $row['nis']
+                            ); ?>
+                        </td>
 
-                    <td>
-                        <?= htmlspecialchars($row['jenis_kelamin'] ?? '-'); ?>
-                    </td>
 
-                    <td>
-                        <?= htmlspecialchars($row['no_hp_ortu'] ?? '-'); ?>
-                    </td>
+                        <td>
 
-                    <td>
+                            <b>
+                                <?= htmlspecialchars(
+                                    $row['nama']
+                                ); ?>
+                            </b>
 
-                        <a
-                            class="btn-hapus"
-                            href="kelola_siswa.php?hapus=<?= $row['id']; ?>"
-                            onclick="return confirm('Hapus data siswa ini?')"
+                        </td>
+
+
+                        <td>
+                            <?= htmlspecialchars(
+                                $row['jenis_kelamin'] ?? '-'
+                            ); ?>
+                        </td>
+
+
+                        <td>
+                            <?= htmlspecialchars(
+                                $row['no_hp_ortu'] ?? '-'
+                            ); ?>
+                        </td>
+
+
+                        <td>
+
+                            <a
+                                class="btn btn-edit"
+                                href="edit_siswa.php?id=<?= $row['id']; ?>"
+                            >
+                                Edit
+                            </a>
+
+
+                            <a
+                                class="btn btn-hapus"
+                                href="kelola_siswa.php?hapus=<?= $row['id']; ?>"
+                                onclick="return confirm('Hapus data siswa ini?')"
+                            >
+                                Hapus
+                            </a>
+
+                        </td>
+
+                    </tr>
+
+
+                <?php
+
+                    }
+
+                } else {
+
+                ?>
+
+                    <tr>
+
+                        <td
+                            colspan="6"
+                            style="text-align:center;padding:25px;"
                         >
-                            Hapus
-                        </a>
 
-                    </td>
+                            Belum ada data siswa.
 
-                </tr>
+                        </td>
+
+                    </tr>
 
                 <?php } ?>
+
+
+                </tbody>
 
             </table>
 
         </div>
 
+
     </div>
+
 
 </div>
 
+
 </body>
+
 </html>
