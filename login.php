@@ -1,3 +1,4 @@
+```php
 <?php
 
 session_start();
@@ -18,33 +19,84 @@ if (isset($_POST['login'])) {
 
         $email = mysqli_real_escape_string($koneksi, $email);
 
+        /*
+        =====================================================
+        CARI AKUN BERDASARKAN USERNAME
+        =====================================================
+        */
+
         $query = mysqli_query(
             $koneksi,
-            "SELECT id, nama, email, password, role, aktif
+            "SELECT
+                id,
+                nama,
+                username,
+                password,
+                role,
+                aktif
              FROM users
-             WHERE email = '$email'
+             WHERE username = '$email'
              LIMIT 1"
         );
 
         if (!$query) {
-            die("Error database: " . mysqli_error($koneksi));
+
+            die(
+                "Error database: " .
+                mysqli_error($koneksi)
+            );
         }
+
 
         if (mysqli_num_rows($query) == 1) {
 
             $user = mysqli_fetch_assoc($query);
 
+
+            /*
+            =================================================
+            CEK AKUN AKTIF
+            =================================================
+            */
+
             if ($user['aktif'] != 1) {
 
                 $pesan = "Akun tidak aktif.";
 
-            } elseif (password_verify($password, $user['password'])) {
+            }
+
+
+            /*
+            =================================================
+            CEK PASSWORD
+            =================================================
+            
+            Password di database kamu sekarang masih:
+            admin123
+            guru123
+            walikelas123
+
+            Jadi kita cocokkan langsung dulu.
+            */
+
+            elseif ($password === $user['password']) {
 
                 $_SESSION['login'] = true;
+
                 $_SESSION['user_id'] = $user['id'];
+
                 $_SESSION['nama'] = $user['nama'];
-                $_SESSION['email'] = $user['email'];
+
+                $_SESSION['email'] = $user['username'];
+
                 $_SESSION['role'] = $user['role'];
+
+
+                /*
+                ==============================
+                MASUK DASHBOARD
+                ==============================
+                */
 
                 header("Location: dashboard.php");
                 exit;
@@ -52,30 +104,34 @@ if (isset($_POST['login'])) {
             } else {
 
                 $pesan = "Email atau password salah.";
-
             }
+
 
         } else {
 
             $pesan = "Email atau password salah.";
-
         }
     }
 }
 
 ?>
 
+
 <!DOCTYPE html>
+
 <html lang="id">
 
 <head>
 
     <meta charset="UTF-8">
 
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
     <title>Login Sistem</title>
+
 
     <style>
 
@@ -195,7 +251,9 @@ if (isset($_POST['login'])) {
 
 </head>
 
+
 <body>
+
 
 <div class="login-container">
 
@@ -207,17 +265,23 @@ if (isset($_POST['login'])) {
             Sistem Informasi Pelanggaran Siswa
         </div>
 
+
         <?php if ($pesan != "") { ?>
 
             <div class="error">
+
                 <?= htmlspecialchars($pesan); ?>
+
             </div>
 
         <?php } ?>
 
+
         <form method="POST">
 
-            <label>Email</label>
+            <label>
+                Email
+            </label>
 
             <input
                 type="email"
@@ -226,7 +290,10 @@ if (isset($_POST['login'])) {
                 required
             >
 
-            <label>Password</label>
+
+            <label>
+                Password
+            </label>
 
             <input
                 type="password"
@@ -234,6 +301,7 @@ if (isset($_POST['login'])) {
                 placeholder="Masukkan password"
                 required
             >
+
 
             <button
                 type="submit"
@@ -248,6 +316,8 @@ if (isset($_POST['login'])) {
 
 </div>
 
+
 </body>
 
 </html>
+```
