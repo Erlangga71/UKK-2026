@@ -7,253 +7,238 @@ ini_set('display_errors', 1);
 require_once "database.php";
 require_once "auth.php";
 
-/*
-|--------------------------------------------------------------------------
-| CEK LOGIN & ROLE
-|--------------------------------------------------------------------------
-*/
-
 hanyaRole(['admin']);
 
+$error = "";
 
-/*
-|--------------------------------------------------------------------------
-| AMBIL ID GURU
-|--------------------------------------------------------------------------
-*/
+/* =========================
+   AMBIL ID GURU
+========================= */
 
-$id = filter_input(
-    INPUT_GET,
-    'id',
-    FILTER_VALIDATE_INT
-);
+$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 
-if (!$id) {
+if (!$id || $id < 1) {
     die("ID guru tidak valid.");
 }
 
+/* =========================
+   AMBIL DATA GURU DAN AKUN
+========================= */
 
-/*
-|--------------------------------------------------------------------------
-| AMBIL DATA GURU
-|--------------------------------------------------------------------------
-*/
-
-$query = mysqli_query(
+$stmt = mysqli_prepare(
     $koneksi,
-    "
-    SELECT
+    "SELECT
         g.id,
         g.nama,
         g.nip,
-        g.user_id,
-        u.email,
+        g.email,
+        g.no_hp,
+        u.id AS user_id,
+        u.email AS email_akun,
         u.role,
         u.aktif
-    FROM guru g
-
-    LEFT JOIN users u
-        ON g.user_id = u.id
-
-    WHERE g.id = $id
-    LIMIT 1
-    "
+     FROM guru g
+     LEFT JOIN users u
+        ON u.email = g.email AND u.role = 'guru'
+     WHERE g.id = ?
+     LIMIT 1"
 );
 
-if (!$query) {
-    die(
-        "Query guru error: " .
-        mysqli_error($koneksi)
-    );
-}
+mysqli_stmt_bind_param($stmt, "i", $id);
+mysqli_stmt_execute($stmt);
 
-$guru = mysqli_fetch_assoc($query);
+$result = mysqli_stmt_get_result($stmt);
+$guru = mysqli_fetch_assoc($result);
+
+mysqli_stmt_close($stmt);
 
 if (!$guru) {
     die("Data guru tidak ditemukan.");
 }
 
+if (empty($guru['user_id'])) {
+    die("Akun login guru tidak ditemukan. Periksa kecocokan email pada tabel guru dan users.");
+}
 
-/*
-|--------------------------------------------------------------------------
-| PROSES UPDATE
-|--------------------------------------------------------------------------
-*/
-
-$pesan = '';
+/* =========================
+   PROSES UPDATE
+========================= */
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $nama = trim($_POST['nama'] ?? '');
     $nip = trim($_POST['nip'] ?? '');
     $email = trim($_POST['email'] ?? '');
-    $role = $_POST['role'] ?? 'guru';
-    $aktif = isset($_POST['aktif']) ? 1 : 0;
+    $no_hp = trim($_POST['no_hp'] ?? '');
     $password = $_POST['password'] ?? '';
+    $aktif = isset($_POST['aktif']) ? (int)$_POST['aktif'] : 0;
 
+    if ($nama == '' || $email == '') {
 
-    /*
-    |--------------------------------------------------------------------------
-    | VALIDASI
-    |--------------------------------------------------------------------------
-    */
-
-    if (
-        empty($nama) ||
-        empty($nip) ||
-        empty($email)
-    ) {
-
-        $pesan = "Nama, NIP, dan email wajib diisi.";
+        $error = "Nama dan email wajib diisi.";
 
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
 
-        $pesan = "Format email tidak valid.";
+        $error = "Format email tidak valid.";
 
-    } elseif (!in_array($role, ['guru', 'wali_kelas'])) {
+    } elseif (!in_array($aktif, [0, 1], true)) {
 
-        $pesan = "Role tidak valid.";
+        $error = "Status akun tidak valid.";
 
     } else {
 
-        /*
-        |--------------------------------------------------------------------------
-        | CEK EMAIL
-        |--------------------------------------------------------------------------
-        */
+        $user_id = (int)$guru['user_id'];
+        $email_lama = $guru['email'];
 
-        $email_safe = mysqli_real_escape_string(
+        // CEK EMAIL DUPLIKAT
+        $stmt = mysqli_prepare(
             $koneksi,
-            $email
+            "SELECT id FROM users
+             WHERE (email = ? OR username = ?)
+             AND id != ?
+             LIMIT 1"
         );
 
-        $cek_email = mysqli_query(
-            $koneksi,
-            "
-            SELECT id
-            FROM users
-            WHERE email = '$email_safe'
-            AND id != " . (int)$guru['user_id'] . "
-            LIMIT 1
-            "
+        mysqli_stmt_bind_param(
+            $stmt,
+            "ssi",
+            $email,
+            $email,
+            $user_id
         );
 
-        if (!$cek_email) {
+        mysqli_stmt_execute($stmt);
+        $cek_email = mysqli_stmt_get_result($stmt);
+        $email_ada = mysqli_num_rows($cek_email) > 0;
+        mysqli_stmt_close($stmt);
 
-            $pesan =
-                "Gagal mengecek email: " .
-                mysqli_error($koneksi);
+        if ($email_ada) {
 
-        } elseif (mysqli_num_rows($cek_email) > 0) {
-
-            $pesan = "Email tersebut sudah digunakan.";
+            $error = "Email tersebut sudah digunakan akun lain.";
 
         } else {
 
-            /*
-            |--------------------------------------------------------------------------
-            | UPDATE TABEL GURU
-            |--------------------------------------------------------------------------
-            */
-
-            $stmt = $koneksi->prepare(
-                "
-                UPDATE guru
-                SET
-                    nama = ?,
-                    nip = ?
-                WHERE id = ?
-                "
+            // CEK EMAIL DI DATA GURU
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "SELECT id FROM guru
+                 WHERE email = ? AND id != ?
+                 LIMIT 1"
             );
 
-            $stmt->bind_param(
-                "ssi",
-                $nama,
-                $nip,
+            mysqli_stmt_bind_param(
+                $stmt,
+                "si",
+                $email,
                 $id
             );
 
-            if (!$stmt->execute()) {
+            mysqli_stmt_execute($stmt);
+            $cek_guru = mysqli_stmt_get_result($stmt);
+            $email_guru_ada = mysqli_num_rows($cek_guru) > 0;
+            mysqli_stmt_close($stmt);
 
-                $pesan =
-                    "Gagal update data guru: " .
-                    $stmt->error;
+            if ($email_guru_ada) {
+
+                $error = "Email tersebut sudah digunakan guru lain.";
 
             } else {
 
-                /*
-                |--------------------------------------------------------------------------
-                | UPDATE USERS
-                |--------------------------------------------------------------------------
-                */
+                mysqli_begin_transaction($koneksi);
 
-                $user_id = (int)$guru['user_id'];
+                try {
 
-                if (!empty($password)) {
+                    $nip_db = ($nip === '') ? null : $nip;
+                    $no_hp_db = ($no_hp === '') ? null : $no_hp;
 
-                    $password_hash = password_hash(
-                        $password,
-                        PASSWORD_DEFAULT
+                    // UPDATE DATA GURU
+                    $stmt = mysqli_prepare(
+                        $koneksi,
+                        "UPDATE guru
+                         SET nama = ?, nip = ?, email = ?, no_hp = ?
+                         WHERE id = ?"
                     );
 
-                    $stmt = $koneksi->prepare(
-                        "
-                        UPDATE users
-                        SET
-                            nama = ?,
-                            email = ?,
-                            password = ?,
-                            role = ?,
-                            aktif = ?
-                        WHERE id = ?
-                        "
-                    );
-
-                    $stmt->bind_param(
-                        "ssssii",
+                    mysqli_stmt_bind_param(
+                        $stmt,
+                        "ssssi",
                         $nama,
+                        $nip_db,
                         $email,
-                        $password_hash,
-                        $role,
-                        $aktif,
-                        $user_id
+                        $no_hp_db,
+                        $id
                     );
 
-                } else {
+                    if (!mysqli_stmt_execute($stmt)) {
+                        throw new Exception(mysqli_stmt_error($stmt));
+                    }
 
-                    $stmt = $koneksi->prepare(
-                        "
-                        UPDATE users
-                        SET
-                            nama = ?,
-                            email = ?,
-                            role = ?,
-                            aktif = ?
-                        WHERE id = ?
-                        "
-                    );
+                    mysqli_stmt_close($stmt);
 
-                    $stmt->bind_param(
-                        "sssii",
-                        $nama,
-                        $email,
-                        $role,
-                        $aktif,
-                        $user_id
-                    );
-                }
+                    // UPDATE AKUN TANPA MENGGANTI PASSWORD
+                    if ($password === '') {
 
+                        $stmt = mysqli_prepare(
+                            $koneksi,
+                            "UPDATE users
+                             SET nama = ?, email = ?, username = ?, aktif = ?
+                             WHERE id = ? AND role = 'guru'"
+                        );
 
-                if ($stmt->execute()) {
+                        mysqli_stmt_bind_param(
+                            $stmt,
+                            "sssii",
+                            $nama,
+                            $email,
+                            $email,
+                            $aktif,
+                            $user_id
+                        );
 
-                    header("Location: guru.php");
+                    } else {
+
+                        // UPDATE AKUN SEKALIGUS PASSWORD
+                        $password_hash = password_hash(
+                            $password,
+                            PASSWORD_DEFAULT
+                        );
+
+                        $stmt = mysqli_prepare(
+                            $koneksi,
+                            "UPDATE users
+                             SET nama = ?, email = ?, username = ?,
+                                 password = ?, aktif = ?
+                             WHERE id = ? AND role = 'guru'"
+                        );
+
+                        mysqli_stmt_bind_param(
+                            $stmt,
+                            "ssssii",
+                            $nama,
+                            $email,
+                            $email,
+                            $password_hash,
+                            $aktif,
+                            $user_id
+                        );
+                    }
+
+                    if (!mysqli_stmt_execute($stmt)) {
+                        throw new Exception(mysqli_stmt_error($stmt));
+                    }
+
+                    mysqli_stmt_close($stmt);
+
+                    mysqli_commit($koneksi);
+
+                    header("Location: kelola_guru.php");
                     exit;
 
-                } else {
+                } catch (Exception $e) {
 
-                    $pesan =
-                        "Gagal update akun: " .
-                        $stmt->error;
+                    mysqli_rollback($koneksi);
+
+                    $error = "Gagal memperbarui data: " . $e->getMessage();
                 }
             }
         }
@@ -263,30 +248,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 
 <!DOCTYPE html>
-
 <html lang="id">
 
 <head>
 
 <meta charset="UTF-8">
-
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>Edit Guru</title>
 
-<style>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-* {
-    box-sizing: border-box;
-}
+<style>
 
 body {
     margin: 0;
     font-family: Arial, sans-serif;
-    background: #f4f4f4;
+    background: #f4f6f8;
     color: #333;
 }
 
@@ -294,10 +272,10 @@ body {
     background: #687280;
     color: white;
     padding: 18px 30px;
-
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 10px;
 }
 
 .header h2 {
@@ -305,17 +283,9 @@ body {
     font-size: 20px;
 }
 
-.kembali {
-    background: #56606d;
-    color: white;
-    text-decoration: none;
-    padding: 9px 14px;
-    border-radius: 5px;
-}
-
-.container {
+.container-edit {
     width: 90%;
-    max-width: 700px;
+    max-width: 750px;
     margin: 30px auto;
 }
 
@@ -327,45 +297,30 @@ body {
 }
 
 .box h1 {
-    margin-top: 0;
     font-size: 23px;
+    margin-bottom: 8px;
 }
 
-.form-group {
-    margin-bottom: 18px;
+.keterangan {
+    color: #777;
+    margin-bottom: 25px;
 }
 
-label {
-    display: block;
-    font-weight: bold;
-    margin-bottom: 7px;
-}
+@media(max-width: 600px) {
+    .header {
+        padding: 15px;
+        flex-direction: column;
+        align-items: flex-start;
+    }
 
-input,
-select {
-    width: 100%;
-    padding: 11px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-family: Arial, sans-serif;
-}
+    .container-edit {
+        width: 95%;
+        margin: 15px auto;
+    }
 
-.pesan {
-    background: #fff3cd;
-    border: 1px solid #ffe69c;
-    color: #664d03;
-    padding: 12px;
-    border-radius: 5px;
-    margin-bottom: 20px;
-}
-
-.btn {
-    background: #687280;
-    color: white;
-    border: none;
-    padding: 11px 18px;
-    border-radius: 5px;
-    cursor: pointer;
+    .box {
+        padding: 18px;
+    }
 }
 
 </style>
@@ -376,173 +331,150 @@ select {
 
 <div class="header">
 
-    <h2>
-        SISTEM INFORMASI PELANGGARAN SISWA
-    </h2>
+    <h2>⚖ SISTEM INFORMASI PELANGGARAN SISWA</h2>
 
-    <a
-        href="guru.php"
-        class="kembali"
-    >
+    <a href="kelola_guru.php" class="btn btn-secondary btn-sm">
         ← Kembali
     </a>
 
 </div>
 
 
-<div class="container">
+<div class="container-edit">
 
-<div class="box">
+    <div class="box">
 
-<h1>
-    Edit Data Guru
-</h1>
+        <h1>Edit Data Guru</h1>
 
+        <p class="keterangan">
+            Perbarui informasi guru dan akun login.
+        </p>
 
-<?php if ($pesan): ?>
+        <?php if ($error != '') { ?>
 
-<div class="pesan">
-    <?= htmlspecialchars($pesan); ?>
-</div>
+            <div class="alert alert-danger">
+                <?= htmlspecialchars($error); ?>
+            </div>
 
-<?php endif; ?>
-
-
-<form method="POST">
+        <?php } ?>
 
 
-<div class="form-group">
+        <form method="POST">
 
-<label>
-    Nama Guru
-</label>
+            <div class="mb-3">
 
-<input
-    type="text"
-    name="nama"
-    value="<?= htmlspecialchars($guru['nama']); ?>"
-    required
->
+                <label class="form-label">Nama Guru</label>
 
-</div>
+                <input
+                    type="text"
+                    name="nama"
+                    class="form-control"
+                    value="<?= htmlspecialchars($guru['nama']); ?>"
+                    required
+                >
 
-
-<div class="form-group">
-
-<label>
-    NIP
-</label>
-
-<input
-    type="text"
-    name="nip"
-    value="<?= htmlspecialchars($guru['nip']); ?>"
-    required
->
-
-</div>
+            </div>
 
 
-<div class="form-group">
+            <div class="mb-3">
 
-<label>
-    Email
-</label>
+                <label class="form-label">NIP</label>
 
-<input
-    type="email"
-    name="email"
-    value="<?= htmlspecialchars($guru['email'] ?? ''); ?>"
-    required
->
+                <input
+                    type="text"
+                    name="nip"
+                    class="form-control"
+                    value="<?= htmlspecialchars($guru['nip'] ?? ''); ?>"
+                >
 
-</div>
+            </div>
 
 
-<div class="form-group">
+            <div class="mb-3">
 
-<label>
-    Role
-</label>
+                <label class="form-label">Gmail</label>
 
-<select name="role" required>
+                <input
+                    type="email"
+                    name="email"
+                    class="form-control"
+                    value="<?= htmlspecialchars($guru['email'] ?? ''); ?>"
+                    required
+                >
 
-<option
-    value="guru"
-    <?= ($guru['role'] === 'guru') ? 'selected' : ''; ?>
->
-    Guru
-</option>
-
-<option
-    value="wali_kelas"
-    <?= ($guru['role'] === 'wali_kelas') ? 'selected' : ''; ?>
->
-    Wali Kelas
-</option>
-
-</select>
-
-</div>
+            </div>
 
 
-<div class="form-group">
+            <div class="mb-3">
 
-<label>
-    Password Baru
-</label>
+                <label class="form-label">No HP</label>
 
-<input
-    type="password"
-    name="password"
-    placeholder="Kosongkan jika tidak ingin mengganti password"
->
+                <input
+                    type="text"
+                    name="no_hp"
+                    class="form-control"
+                    value="<?= htmlspecialchars($guru['no_hp'] ?? ''); ?>"
+                >
 
-</div>
-
-
-<div class="form-group">
-
-<label>
-    Status Akun
-</label>
-
-<select name="aktif">
-
-<option
-    value="1"
-    <?= ((int)$guru['aktif'] === 1) ? 'selected' : ''; ?>
->
-    Aktif
-</option>
-
-<option
-    value="0"
-    <?= ((int)$guru['aktif'] === 0) ? 'selected' : ''; ?>
->
-    Tidak Aktif
-</option>
-
-</select>
-
-</div>
+            </div>
 
 
-<button
-    type="submit"
-    class="btn"
->
-    Simpan Perubahan
-</button>
+            <div class="mb-3">
+
+                <label class="form-label">Password Baru</label>
+
+                <input
+                    type="password"
+                    name="password"
+                    class="form-control"
+                    placeholder="Kosongkan jika tidak ingin mengganti password"
+                >
+
+                <small class="text-muted">
+                    Password lama tetap digunakan jika bagian ini dikosongkan.
+                </small>
+
+            </div>
 
 
-</form>
+            <div class="mb-4">
 
-</div>
+                <label class="form-label">Status Akun</label>
+
+                <select name="aktif" class="form-select">
+
+                    <option
+                        value="1"
+                        <?= ((int)$guru['aktif'] === 1) ? 'selected' : ''; ?>
+                    >
+                        Aktif
+                    </option>
+
+                    <option
+                        value="0"
+                        <?= ((int)$guru['aktif'] === 0) ? 'selected' : ''; ?>
+                    >
+                        Tidak Aktif
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <button type="submit" class="btn btn-primary">
+                Simpan Perubahan
+            </button>
+
+            <a href="kelola_guru.php" class="btn btn-secondary">
+                Batal
+            </a>
+
+        </form>
+
+    </div>
 
 </div>
 
 </body>
-
 </html>
-```

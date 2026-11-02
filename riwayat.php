@@ -1,3 +1,4 @@
+
 <?php
 
 session_start();
@@ -8,6 +9,16 @@ if (!isset($_SESSION['login'])) {
 }
 
 include "database.php";
+
+$role = $_SESSION['role'] ?? '';
+
+if (!in_array($role, ['admin', 'guru', 'wali_kelas'])) {
+    die("Akses ditolak.");
+}
+
+/* =========================
+   DATA RIWAYAT PELANGGARAN
+========================= */
 
 $query = mysqli_query($koneksi, "
     SELECT
@@ -36,9 +47,12 @@ if (!$query) {
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="id">
 
 <head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>Riwayat Pelanggaran</title>
 
@@ -51,78 +65,156 @@ if (!$query) {
         body {
             margin: 0;
             font-family: Arial, sans-serif;
-            background: #eef4f7;
+            background: #f4f6f8;
             color: #333;
         }
 
-        .header {
-            background: #086177;
-            color: white;
-            padding: 18px 30px;
+        /* SIDEBAR */
 
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 220px;
+            height: 100vh;
+            background: #687280;
+            padding: 20px 12px;
+            overflow-y: auto;
         }
 
-        .header a {
+        .sidebar-title {
+            color: white;
+            font-size: 19px;
+            font-weight: bold;
+            margin: 0 8px 25px;
+            line-height: 1.4;
+        }
+
+        .sidebar a {
+            display: block;
+            padding: 11px 13px;
+            margin-bottom: 5px;
             color: white;
             text-decoration: none;
-            background: #dc2626;
-            padding: 8px 15px;
             border-radius: 5px;
+            font-size: 14px;
         }
 
-        .container {
-            width: 95%;
-            max-width: 1100px;
-            margin: 30px auto;
+        .sidebar a:hover,
+        .sidebar a.active {
+            background: #4f5965;
         }
+
+        .logout {
+            margin-top: 20px;
+            background: #b42323;
+        }
+
+        /* CONTENT */
+
+        .content {
+            margin-left: 220px;
+            padding: 30px;
+        }
+
+        /* HEADER */
+
+        .header {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 7px;
+            padding: 22px;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .header p {
+            color: #777;
+            margin-bottom: 0;
+        }
+
+        /* BOX */
 
         .box {
             background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            border: 1px solid #ddd;
+            border-radius: 7px;
+            padding: 22px;
+            margin-bottom: 20px;
         }
 
-        h2 {
-            color: #086177;
+        .box h2 {
             margin-top: 0;
+        }
+
+        .deskripsi {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        /* TABLE */
+
+        .table-container {
+            overflow-x: auto;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
         }
 
         th {
-            background: #086177;
+            background: #687280;
             color: white;
-            padding: 12px;
+            padding: 11px;
             text-align: left;
+            font-size: 13px;
         }
 
         td {
-            padding: 10px;
+            padding: 11px;
             border-bottom: 1px solid #ddd;
+            font-size: 13px;
         }
 
         tr:hover {
-            background: #f1f5f9;
+            background: #f7f7f7;
         }
 
         .status {
+            display: inline-block;
             padding: 5px 9px;
             border-radius: 5px;
-            font-size: 13px;
+            font-size: 12px;
             background: #e0f2fe;
+            color: #075985;
         }
 
         .kosong {
             text-align: center;
-            padding: 20px;
+            padding: 25px;
+        }
+
+        /* RESPONSIVE */
+
+        @media(max-width:700px) {
+
+            .sidebar {
+                position: relative;
+                width: 100%;
+                height: auto;
+            }
+
+            .content {
+                margin-left: 0;
+                padding: 15px;
+            }
+
         }
 
     </style>
@@ -131,109 +223,216 @@ if (!$query) {
 
 <body>
 
-<div class="header">
+<!-- SIDEBAR -->
 
-    <b>SISTEM INFORMASI PELANGGARAN SISWA</b>
+<div class="sidebar">
 
-    <a href="dashboard.php">
-        Kembali
+    <div class="sidebar-title">
+        ⚖ Pelanggaran<br>
+        Siswa
+    </div>
+
+    <?php if ($role == 'admin') { ?>
+
+        <!-- MENU ADMIN -->
+
+        <a href="dashboard.php">
+            🏠 Dashboard
+        </a>
+
+        <a href="kelola_siswa.php">
+            Data Siswa
+        </a>
+
+        <a href="kelola_guru.php">
+            Data Guru
+        </a>
+
+        <a href="kelola_kelas.php">
+            Data Kelas
+        </a>
+
+        <a href="kelola_tahun_ajaran.php">
+            Tahun Ajaran
+        </a>
+
+        <a href="kelola_wali_kelas.php">
+            Wali Kelas
+        </a>
+
+        <a href="penempatan_siswa.php">
+            Penempatan Siswa
+        </a>
+
+        <a href="kelola_pelanggaran_kategori.php">
+            ⚠ Kategori Pelanggaran
+        </a>
+
+        <a href="pelanggaran.php">
+            Data Pelanggaran
+        </a>
+
+        <a href="tindakan.php">
+            Data Tindakan
+        </a>
+
+        <a href="laporan.php">
+            Laporan
+        </a>
+
+        <a href="about_me.php">
+            ℹ About Me
+        </a>
+
+    <?php } else { ?>
+
+        <!-- MENU GURU DAN WALI KELAS -->
+
+        <a href="dashboard.php">
+            🏠 Dashboard
+        </a>
+
+        <a href="catat_pelanggaran.php">
+            Catat Pelanggaran
+        </a>
+
+        <a href="tindakan.php">
+            Tindakan
+        </a>
+
+        <a href="riwayat.php" class="active">
+            Riwayat
+        </a>
+
+        <a href="rekap_poin.php">
+            Rekap Poin
+        </a>
+
+    <?php } ?>
+
+    <a href="logout.php" class="logout">
+        🚪 Logout
     </a>
 
 </div>
 
 
-<div class="container">
+<!-- CONTENT -->
 
-    <div class="box">
+<div class="content">
 
-        <h2>Riwayat Pelanggaran</h2>
+    <div class="header">
+
+        <h1>Riwayat Pelanggaran</h1>
 
         <p>
             Daftar riwayat pelanggaran siswa.
         </p>
 
-        <table>
+    </div>
 
-            <tr>
 
-                <th>No</th>
-                <th>Nama Siswa</th>
-                <th>Jenis Pelanggaran</th>
-                <th>Poin</th>
-                <th>Tanggal</th>
-                <th>Status</th>
-                <th>Keterangan</th>
+    <div class="box">
 
-            </tr>
+        <h2>Daftar Riwayat Pelanggaran</h2>
 
-            <?php
+        <p class="deskripsi">
+            Informasi seluruh catatan riwayat pelanggaran siswa.
+        </p>
 
-            $no = 1;
+        <div class="table-container">
 
-            if (mysqli_num_rows($query) > 0) {
+            <table>
 
-                while ($data = mysqli_fetch_assoc($query)) {
+                <thead>
 
-            ?>
+                    <tr>
+                        <th>No</th>
+                        <th>Nama Siswa</th>
+                        <th>Jenis Pelanggaran</th>
+                        <th>Poin</th>
+                        <th>Tanggal</th>
+                        <th>Status</th>
+                        <th>Keterangan</th>
+                    </tr>
 
-            <tr>
+                </thead>
 
-                <td>
-                    <?= $no++; ?>
-                </td>
+                <tbody>
 
-                <td>
-                    <?= htmlspecialchars($data['nama_siswa']); ?>
-                </td>
+                    <?php
 
-                <td>
-                    <?= htmlspecialchars($data['jenis']); ?>
-                </td>
+                    $no = 1;
 
-                <td>
-                    <?= htmlspecialchars($data['poin']); ?>
-                </td>
+                    if (mysqli_num_rows($query) > 0) {
 
-                <td>
-                    <?= htmlspecialchars($data['tanggal']); ?>
-                </td>
+                        while ($data = mysqli_fetch_assoc($query)) {
 
-                <td>
-                    <span class="status">
-                        <?= htmlspecialchars($data['status']); ?>
-                    </span>
-                </td>
+                    ?>
 
-                <td>
-                    <?= htmlspecialchars($data['keterangan'] ?? '-'); ?>
-                </td>
+                        <tr>
 
-            </tr>
+                            <td>
+                                <?= $no++; ?>
+                            </td>
 
-            <?php
+                            <td>
+                                <b>
+                                    <?= htmlspecialchars($data['nama_siswa']); ?>
+                                </b>
+                            </td>
 
-                }
+                            <td>
+                                <?= htmlspecialchars($data['jenis']); ?>
+                            </td>
 
-            } else {
+                            <td>
+                                <?= htmlspecialchars($data['poin']); ?>
+                            </td>
 
-            ?>
+                            <td>
+                                <?= htmlspecialchars($data['tanggal']); ?>
+                            </td>
 
-            <tr>
+                            <td>
+                                <span class="status">
+                                    <?= htmlspecialchars($data['status']); ?>
+                                </span>
+                            </td>
 
-                <td colspan="7" class="kosong">
-                    Belum ada riwayat pelanggaran.
-                </td>
+                            <td>
+                                <?= htmlspecialchars($data['keterangan'] ?? '-'); ?>
+                            </td>
 
-            </tr>
+                        </tr>
 
-            <?php } ?>
+                    <?php
 
-        </table>
+                        }
+
+                    } else {
+
+                    ?>
+
+                        <tr>
+
+                            <td colspan="7" class="kosong">
+                                Belum ada riwayat pelanggaran.
+                            </td>
+
+                        </tr>
+
+                    <?php } ?>
+
+                </tbody>
+
+            </table>
+
+        </div>
 
     </div>
 
 </div>
 
 </body>
-
 </html>

@@ -1,3 +1,4 @@
+
 <?php
 
 session_start();
@@ -11,15 +12,12 @@ include "database.php";
 
 $role = $_SESSION['role'] ?? '';
 
-/* =========================
-   CEK ADMIN
-========================= */
-
 if ($role != 'admin') {
     echo "Akses ditolak.";
     exit;
 }
 
+$error = "";
 
 /* =========================
    TAMBAH TAHUN AJARAN
@@ -32,80 +30,72 @@ if (isset($_POST['simpan'])) {
     $tanggal_selesai = $_POST['tanggal_selesai'] ?? '';
     $aktif = isset($_POST['aktif']) ? 1 : 0;
 
-    if (
-        $nama == '' ||
-        $tanggal_mulai == '' ||
-        $tanggal_selesai == ''
-    ) {
+    if ($nama == '' || $tanggal_mulai == '' || $tanggal_selesai == '') {
 
         $error = "Semua data wajib diisi.";
 
+    } elseif ($tanggal_selesai < $tanggal_mulai) {
+
+        $error = "Tanggal selesai tidak boleh sebelum tanggal mulai.";
+
     } else {
 
-        $nama_db = mysqli_real_escape_string(
-            $koneksi,
-            $nama
-        );
+        mysqli_begin_transaction($koneksi);
 
-        $mulai_db = mysqli_real_escape_string(
-            $koneksi,
-            $tanggal_mulai
-        );
+        try {
 
-        $selesai_db = mysqli_real_escape_string(
-            $koneksi,
-            $tanggal_selesai
-        );
+            // Nonaktifkan tahun ajaran lainnya
+            if ($aktif == 1) {
 
+                $nonaktif = mysqli_query(
+                    $koneksi,
+                    "UPDATE tahun_ajaran SET aktif = 0"
+                );
 
-        /* Jika aktif, nonaktifkan yang lain */
+                if (!$nonaktif) {
+                    throw new Exception(mysqli_error($koneksi));
+                }
+            }
 
-        if ($aktif == 1) {
-
-            mysqli_query(
+            // Simpan tahun ajaran
+            $stmt = mysqli_prepare(
                 $koneksi,
-                "UPDATE tahun_ajaran
-                 SET aktif = 0"
+                "INSERT INTO tahun_ajaran
+                (nama, tanggal_mulai, tanggal_selesai, aktif)
+                VALUES (?, ?, ?, ?)"
             );
-        }
 
+            if (!$stmt) {
+                throw new Exception(mysqli_error($koneksi));
+            }
 
-        $query = mysqli_query(
-            $koneksi,
-            "INSERT INTO tahun_ajaran
-            (
-                nama,
-                tanggal_mulai,
-                tanggal_selesai,
-                aktif
-            )
-            VALUES
-            (
-                '$nama_db',
-                '$mulai_db',
-                '$selesai_db',
+            mysqli_stmt_bind_param(
+                $stmt,
+                "sssi",
+                $nama,
+                $tanggal_mulai,
+                $tanggal_selesai,
                 $aktif
-            )"
-        );
-
-
-        if ($query) {
-
-            header(
-                "Location: kelola_tahun_ajaran.php"
             );
 
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception(mysqli_stmt_error($stmt));
+            }
+
+            mysqli_stmt_close($stmt);
+
+            mysqli_commit($koneksi);
+
+            header("Location: kelola_tahun_ajaran.php");
             exit;
 
-        } else {
+        } catch (Exception $e) {
 
-            $error =
-                "Gagal menambahkan tahun ajaran: "
-                . mysqli_error($koneksi);
+            mysqli_rollback($koneksi);
+            $error = "Gagal menambahkan tahun ajaran: " . $e->getMessage();
         }
     }
 }
-
 
 /* =========================
    HAPUS TAHUN AJARAN
@@ -117,20 +107,31 @@ if (isset($_GET['hapus'])) {
 
     if ($id > 0) {
 
-        mysqli_query(
+        $stmt = mysqli_prepare(
             $koneksi,
-            "DELETE FROM tahun_ajaran
-             WHERE id = $id"
+            "DELETE FROM tahun_ajaran WHERE id = ?"
         );
+
+        if ($stmt) {
+
+            mysqli_stmt_bind_param($stmt, "i", $id);
+
+            if (!mysqli_stmt_execute($stmt)) {
+                $error = "Gagal menghapus tahun ajaran: " . mysqli_stmt_error($stmt);
+            }
+
+            mysqli_stmt_close($stmt);
+
+        } else {
+            $error = "Query hapus gagal: " . mysqli_error($koneksi);
+        }
     }
 
-    header(
-        "Location: kelola_tahun_ajaran.php"
-    );
-
-    exit;
+    if ($error == "") {
+        header("Location: kelola_tahun_ajaran.php");
+        exit;
+    }
 }
-
 
 /* =========================
    AMBIL DATA
@@ -138,92 +139,66 @@ if (isset($_GET['hapus'])) {
 
 $data = mysqli_query(
     $koneksi,
-    "SELECT
-        id,
-        nama,
-        tanggal_mulai,
-        tanggal_selesai,
-        aktif
+    "SELECT id, nama, tanggal_mulai, tanggal_selesai, aktif
      FROM tahun_ajaran
      ORDER BY id DESC"
 );
 
+if (!$data) {
+    die("Gagal mengambil data: " . mysqli_error($koneksi));
+}
+
 ?>
 
 <!DOCTYPE html>
-
 <html lang="id">
 
 <head>
 
 <meta charset="UTF-8">
-
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>Tahun Ajaran</title>
 
+<!-- BOOTSTRAP 5 -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
 
-* {
-    box-sizing: border-box;
-}
+/* CSS SENDIRI */
 
 body {
     margin: 0;
-    font-family: Arial, sans-serif;
     background: #f4f6f8;
-    color: #333;
+    font-family: Arial, sans-serif;
 }
-
-
-/* =========================
-   SIDEBAR
-========================= */
 
 .sidebar {
     position: fixed;
-    left: 0;
     top: 0;
-
+    left: 0;
     width: 220px;
     height: 100vh;
-
     background: #687280;
-
     padding: 20px 12px;
-
     overflow-y: auto;
 }
 
 .sidebar-title {
     color: white;
-
     font-size: 19px;
-
     font-weight: bold;
-
     margin: 0 8px 25px;
-
     line-height: 1.4;
 }
 
 .sidebar a {
     display: block;
-
     padding: 11px 13px;
-
     margin-bottom: 5px;
-
     color: white;
-
     text-decoration: none;
-
     border-radius: 5px;
-
     font-size: 14px;
 }
 
@@ -232,344 +207,49 @@ body {
     background: #4f5965;
 }
 
-.logout {
+.sidebar .logout {
     margin-top: 20px;
     background: #b42323;
 }
 
-.logout:hover {
-    background: #941d1d !important;
-}
-
-
-/* =========================
-   CONTENT
-========================= */
-
-.content {
-    margin-left: 220px;
-
-    padding: 30px;
-}
-
-
-/* =========================
-   HEADER
-========================= */
-
-.header {
-    background: white;
-
-    border: 1px solid #ddd;
-
-    border-radius: 7px;
-
-    padding: 22px;
-
-    margin-bottom: 20px;
-}
-
-.header h1 {
-    margin: 0;
-
-    font-size: 24px;
-}
-
-.header p {
-    color: #777;
-
-    margin-bottom: 0;
-}
-
-
-/* =========================
-   BOX
-========================= */
-
-.box {
-    background: white;
-
-    border: 1px solid #ddd;
-
-    border-radius: 7px;
-
-    padding: 22px;
-
-    margin-bottom: 20px;
-}
-
-
-/* =========================
-   TOMBOL ATAS
-========================= */
-
-.atas {
-    display: flex;
-
-    justify-content: space-between;
-
-    align-items: center;
-
-    margin-bottom: 20px;
-}
-
-.atas h2 {
-    margin: 0;
-}
-
-.btn-tambah {
-    display: inline-block;
-
-    background: #087f5b;
-
-    color: white;
-
-    text-decoration: none;
-
-    padding: 10px 15px;
-
-    border-radius: 5px;
-}
-
-.btn-tambah:hover {
-    background: #066b4d;
-}
-
-
-/* =========================
-   FORM
-========================= */
-
-.form-grid {
-    display: grid;
-
-    grid-template-columns: 1fr 1fr;
-
-    gap: 15px;
-}
-
-.form-group {
-    display: flex;
-
-    flex-direction: column;
-}
-
-.form-group.full {
-    grid-column: 1 / -1;
-}
-
-label {
-    margin-bottom: 6px;
-
-    font-size: 13px;
-
-    font-weight: bold;
-}
-
-input {
-    padding: 10px;
-
-    border: 1px solid #ccc;
-
-    border-radius: 5px;
-
-    font-family: Arial;
-}
-
-.checkbox {
-    display: flex;
-
-    align-items: center;
-
-    gap: 8px;
-
-    margin-top: 5px;
-}
-
-.checkbox input {
-    width: auto;
-}
-
-.btn-simpan {
-    margin-top: 15px;
-
-    padding: 10px 18px;
-
-    border: none;
-
-    border-radius: 5px;
-
-    background: #687280;
-
-    color: white;
-
-    cursor: pointer;
-}
-
-.btn-simpan:hover {
-    background: #56606d;
-}
-
-.btn-batal {
-    display: inline-block;
-
-    margin-left: 8px;
-
-    padding: 9px 16px;
-
-    background: #777;
-
-    color: white;
-
-    text-decoration: none;
-
-    border-radius: 5px;
-}
-
-
-/* =========================
-   ERROR
-========================= */
-
-.error {
-    background: #fee2e2;
-
-    color: #b91c1c;
-
-    border: 1px solid #fecaca;
-
-    padding: 10px;
-
-    margin-bottom: 15px;
-
-    border-radius: 5px;
-}
-
-
-/* =========================
-   TABLE
-========================= */
-
-.table-container {
-    overflow-x: auto;
-}
-
-table {
-    width: 100%;
-
-    border-collapse: collapse;
-}
-
-th {
-    background: #687280;
-
-    color: white;
-
-    padding: 11px;
-
-    text-align: left;
-
-    font-size: 13px;
-}
-
-td {
-    padding: 11px;
-
-    border-bottom: 1px solid #ddd;
-
-    font-size: 13px;
-}
-
-tr:hover {
-    background: #f7f7f7;
-}
-
-
-/* =========================
-   STATUS
-========================= */
-
-.status-aktif {
-    color: #087f5b;
-
-    font-weight: bold;
-}
-
-.status-nonaktif {
-    color: #b42323;
-
-    font-weight: bold;
-}
-
-
-/* =========================
-   TOMBOL AKSI
-========================= */
-
-.btn-edit,
-.btn-hapus {
-    display: inline-block;
-
-    color: white;
-
-    padding: 6px 10px;
-
-    text-decoration: none;
-
-    border-radius: 4px;
-
-    font-size: 12px;
-}
-
-.btn-edit {
-    background: #086177;
-}
-
-.btn-edit:hover {
-    background: #064d5f;
-}
-
-.btn-hapus {
-    background: #b42323;
-}
-
-.btn-hapus:hover {
+.sidebar .logout:hover {
     background: #941d1d;
 }
 
+.content {
+    margin-left: 220px;
+    padding: 30px;
+}
 
-/* =========================
-   RESPONSIVE
-========================= */
+.header-box {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 7px;
+    padding: 22px;
+    margin-bottom: 20px;
+}
 
-@media(max-width:700px) {
+.header-box h1 {
+    font-size: 24px;
+    margin: 0;
+}
+
+.header-box p {
+    color: #777;
+    margin: 8px 0 0;
+}
+
+@media(max-width: 700px) {
 
     .sidebar {
         position: relative;
-
         width: 100%;
-
         height: auto;
     }
 
     .content {
         margin-left: 0;
-
         padding: 15px;
-    }
-
-    .form-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .atas {
-        display: block;
-    }
-
-    .btn-tambah {
-        display: inline-block;
-
-        margin-top: 10px;
     }
 
 }
@@ -578,13 +258,9 @@ tr:hover {
 
 </head>
 
-
 <body>
 
-
-<!-- =========================
-     SIDEBAR
-========================= -->
+<!-- SIDEBAR -->
 
 <div class="sidebar">
 
@@ -593,442 +269,326 @@ tr:hover {
         Siswa
     </div>
 
+    <a href="dashboard.php">🏠 Dashboard</a>
 
-    <a href="dashboard.php">
-        🏠 Dashboard
-    </a>
+    <a href="kelola_siswa.php">Data Siswa</a>
 
+    <a href="kelola_guru.php">Data Guru</a>
 
-    <a href="kelola_siswa.php">
-        Data Siswa
-    </a>
+    <a href="kelola_kelas.php">Data Kelas</a>
 
-
-    <a href="kelola_guru.php">
-        Data Guru
-    </a>
-
-
-    <a href="kelola_kelas.php">
-        Data Kelas
-    </a>
-
-
-    <a
-        href="kelola_tahun_ajaran.php"
-        class="active"
-    >
+    <a href="kelola_tahun_ajaran.php" class="active">
         Tahun Ajaran
     </a>
 
+    <a href="kelola_wali_kelas.php">Wali Kelas</a>
 
-    <a href="kelola_wali_kelas.php">
-        Wali Kelas
-    </a>
-
-
-    <a href="penempatan_siswa.php">
-        Penempatan Siswa
-    </a>
-
+    <a href="penempatan_siswa.php">Penempatan Siswa</a>
 
     <a href="kelola_pelanggaran_kategori.php">
         ⚠ Kategori Pelanggaran
     </a>
 
+    <a href="pelanggaran.php">Data Pelanggaran</a>
 
-    <a href="pelanggaran.php">
-        Data Pelanggaran
-    </a>
+    <a href="tindakan.php">Data Tindakan</a>
 
+    <a href="laporan.php">Laporan</a>
 
-    <a href="tindakan.php">
-        Data Tindakan
-    </a>
+    <a href="about_me.php">ℹ About Me</a>
 
-
-    <a href="laporan.php">
-        Laporan
-    </a>
-
-
-    <a href="about_me.php">
-        ℹ About Me
-    </a>
-
-
-    <a
-        href="logout.php"
-        class="logout"
-    >
+    <a href="logout.php" class="logout">
         🚪 Logout
     </a>
 
 </div>
 
-
-<!-- =========================
-     CONTENT
-========================= -->
+<!-- CONTENT -->
 
 <div class="content">
 
+    <div class="header-box">
 
-    <div class="header">
+        <h1>Tahun Ajaran</h1>
 
-        <h1>
-            Tahun Ajaran
-        </h1>
-
-        <p>
-            Kelola data tahun ajaran sekolah.
-        </p>
+        <p>Kelola data tahun ajaran sekolah.</p>
 
     </div>
 
+    <!-- PESAN ERROR -->
 
-    <?php if (isset($error)) { ?>
+    <?php if ($error != "") { ?>
 
-        <div class="error">
-
+        <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
-
         </div>
 
     <?php } ?>
 
+    <!-- DAFTAR TAHUN AJARAN -->
 
-    <!-- =========================
-         DAFTAR TAHUN AJARAN
-    ========================= -->
+    <div class="card shadow-sm mb-4">
 
-    <div class="box">
+        <div class="card-body">
 
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
 
-        <div class="atas">
+                <h5 class="mb-0">Daftar Tahun Ajaran</h5>
 
-            <h2>
-                Daftar Tahun Ajaran
-            </h2>
+                <button
+                    type="button"
+                    class="btn btn-success"
+                    onclick="tampilkanForm()"
+                >
+                    + Tambah Tahun Ajaran
+                </button>
 
+            </div>
 
-            <a
-                href="#form-tambah"
-                class="btn-tambah"
-                onclick="tampilkanForm()"
-            >
-                + Tambah Tahun Ajaran
-            </a>
+            <div class="table-responsive">
 
-        </div>
+                <table class="table table-bordered table-striped table-hover align-middle">
 
+                    <thead class="table-dark">
 
-        <div class="table-container">
+                        <tr>
+                            <th>No</th>
+                            <th>Nama</th>
+                            <th>Tanggal Mulai</th>
+                            <th>Tanggal Selesai</th>
+                            <th>Status</th>
+                            <th>Aksi</th>
+                        </tr>
 
-            <table>
+                    </thead>
 
-                <thead>
+                    <tbody>
 
-                    <tr>
+                    <?php
 
-                        <th>No</th>
+                    $no = 1;
 
-                        <th>Nama</th>
+                    if (mysqli_num_rows($data) > 0) {
 
-                        <th>Tanggal Mulai</th>
+                        while ($row = mysqli_fetch_assoc($data)) {
 
-                        <th>Tanggal Selesai</th>
+                    ?>
 
-                        <th>Status</th>
+                        <tr>
 
-                        <th>Aksi</th>
+                            <td><?= $no++; ?></td>
 
-                    </tr>
+                            <td>
+                                <b><?= htmlspecialchars($row['nama']); ?></b>
+                            </td>
 
-                </thead>
+                            <td>
+                                <?= htmlspecialchars($row['tanggal_mulai']); ?>
+                            </td>
 
+                            <td>
+                                <?= htmlspecialchars($row['tanggal_selesai']); ?>
+                            </td>
 
-                <tbody>
+                            <td>
 
-                <?php
+                                <?php if ($row['aktif'] == 1) { ?>
 
-                $no = 1;
+                                    <span class="badge bg-success">
+                                        Aktif
+                                    </span>
 
-                if (
-                    $data &&
-                    mysqli_num_rows($data) > 0
-                ) {
+                                <?php } else { ?>
 
-                    while (
-                        $row = mysqli_fetch_assoc($data)
-                    ) {
+                                    <span class="badge bg-danger">
+                                        Tidak Aktif
+                                    </span>
 
-                ?>
+                                <?php } ?>
 
-                    <tr>
+                            </td>
 
-                        <td>
-                            <?= $no++; ?>
-                        </td>
+                            <td>
 
+                                <a
+                                    href="edit_tahun_ajaran.php?id=<?= $row['id']; ?>"
+                                    class="btn btn-sm btn-primary"
+                                >
+                                    Edit
+                                </a>
 
-                        <td>
+                                <a
+                                    href="kelola_tahun_ajaran.php?hapus=<?= $row['id']; ?>"
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Yakin ingin menghapus tahun ajaran ini?')"
+                                >
+                                    Hapus
+                                </a>
 
-                            <b>
-                                <?= htmlspecialchars(
-                                    $row['nama']
-                                ); ?>
-                            </b>
+                            </td>
 
-                        </td>
+                        </tr>
 
+                    <?php
 
-                        <td>
+                        }
 
-                            <?= htmlspecialchars(
-                                $row['tanggal_mulai']
-                            ); ?>
+                    } else {
 
-                        </td>
+                    ?>
 
+                        <tr>
+                            <td colspan="6" class="text-center">
+                                Belum ada data tahun ajaran.
+                            </td>
+                        </tr>
 
-                        <td>
+                    <?php } ?>
 
-                            <?= htmlspecialchars(
-                                $row['tanggal_selesai']
-                            ); ?>
+                    </tbody>
 
-                        </td>
+                </table>
 
-
-                        <td>
-
-                            <?php if ($row['aktif'] == 1) { ?>
-
-                                <span class="status-aktif">
-                                    Aktif
-                                </span>
-
-                            <?php } else { ?>
-
-                                <span class="status-nonaktif">
-                                    Tidak Aktif
-                                </span>
-
-                            <?php } ?>
-
-                        </td>
-
-
-                        <td>
-
-                            <a
-                                href="edit_tahun_ajaran.php?id=<?= $row['id']; ?>"
-                                class="btn-edit"
-                            >
-                                Edit
-                            </a>
-
-
-                            <a
-                                href="kelola_tahun_ajaran.php?hapus=<?= $row['id']; ?>"
-                                class="btn-hapus"
-                                onclick="return confirm('Yakin ingin menghapus tahun ajaran ini?')"
-                            >
-                                Hapus
-                            </a>
-
-                        </td>
-
-                    </tr>
-
-                <?php
-
-                    }
-
-                } else {
-
-                ?>
-
-                    <tr>
-
-                        <td
-                            colspan="6"
-                            style="text-align:center;padding:25px;"
-                        >
-
-                            Belum ada data tahun ajaran.
-
-                        </td>
-
-                    </tr>
-
-                <?php } ?>
-
-                </tbody>
-
-            </table>
+            </div>
 
         </div>
 
     </div>
 
-
-    <!-- =========================
-         FORM TAMBAH
-         AWALNYA DISEMBUNYIKAN
-    ========================= -->
+    <!-- FORM TAMBAH -->
 
     <div
-        class="box"
+        class="card shadow-sm mb-4"
         id="form-tambah"
         style="display:none;"
     >
 
-        <h2>
-            Tambah Tahun Ajaran
-        </h2>
+        <div class="card-body">
 
+            <h5 class="mb-3">Tambah Tahun Ajaran</h5>
 
-        <form method="POST">
+            <form method="POST">
 
+                <div class="row g-3">
 
-            <div class="form-grid">
+                    <div class="col-md-12">
 
-
-                <div class="form-group full">
-
-                    <label>
-                        Nama Tahun Ajaran
-                    </label>
-
-                    <input
-                        type="text"
-                        name="nama"
-                        placeholder="Contoh: 2026/2027"
-                        required
-                    >
-
-                </div>
-
-
-                <div class="form-group">
-
-                    <label>
-                        Tanggal Mulai
-                    </label>
-
-                    <input
-                        type="date"
-                        name="tanggal_mulai"
-                        required
-                    >
-
-                </div>
-
-
-                <div class="form-group">
-
-                    <label>
-                        Tanggal Selesai
-                    </label>
-
-                    <input
-                        type="date"
-                        name="tanggal_selesai"
-                        required
-                    >
-
-                </div>
-
-
-                <div class="form-group full">
-
-                    <label>
-                        Status
-                    </label>
-
-                    <div class="checkbox">
+                        <label class="form-label">
+                            Nama Tahun Ajaran
+                        </label>
 
                         <input
-                            type="checkbox"
-                            name="aktif"
-                            value="1"
+                            type="text"
+                            name="nama"
+                            class="form-control"
+                            placeholder="Contoh: 2026/2027"
+                            required
                         >
 
-                        <span>
-                            Jadikan tahun ajaran aktif
-                        </span>
+                    </div>
+
+                    <div class="col-md-6">
+
+                        <label class="form-label">
+                            Tanggal Mulai
+                        </label>
+
+                        <input
+                            type="date"
+                            name="tanggal_mulai"
+                            class="form-control"
+                            required
+                        >
+
+                    </div>
+
+                    <div class="col-md-6">
+
+                        <label class="form-label">
+                            Tanggal Selesai
+                        </label>
+
+                        <input
+                            type="date"
+                            name="tanggal_selesai"
+                            class="form-control"
+                            required
+                        >
+
+                    </div>
+
+                    <div class="col-md-12">
+
+                        <div class="form-check">
+
+                            <input
+                                type="checkbox"
+                                name="aktif"
+                                value="1"
+                                class="form-check-input"
+                                id="aktif"
+                            >
+
+                            <label
+                                class="form-check-label"
+                                for="aktif"
+                            >
+                                Jadikan tahun ajaran aktif
+                            </label>
+
+                        </div>
 
                     </div>
 
                 </div>
 
+                <div class="mt-4">
 
-            </div>
+                    <button
+                        type="submit"
+                        name="simpan"
+                        class="btn btn-primary"
+                    >
+                        Simpan
+                    </button>
 
+                    <button
+                        type="button"
+                        class="btn btn-secondary"
+                        onclick="sembunyikanForm()"
+                    >
+                        Batal
+                    </button>
 
-            <button
-                type="submit"
-                name="simpan"
-                class="btn-simpan"
-            >
-                Simpan
-            </button>
+                </div>
 
+            </form>
 
-            <a
-                href="#"
-                class="btn-batal"
-                onclick="sembunyikanForm()"
-            >
-                Batal
-            </a>
-
-
-        </form>
+        </div>
 
     </div>
 
-
 </div>
-
 
 <script>
 
-/* =========================
-   TAMPILKAN FORM
-========================= */
-
 function tampilkanForm() {
 
-    document.getElementById(
-        "form-tambah"
-    ).style.display = "block";
+    document.getElementById("form-tambah").style.display = "block";
 
-    document.getElementById(
-        "form-tambah"
-    ).scrollIntoView({
+    document.getElementById("form-tambah").scrollIntoView({
         behavior: "smooth"
     });
+
 }
-
-
-/* =========================
-   SEMBUNYIKAN FORM
-========================= */
 
 function sembunyikanForm() {
 
-    document.getElementById(
-        "form-tambah"
-    ).style.display = "none";
+    document.getElementById("form-tambah").style.display = "none";
 
 }
 
 </script>
 
-
 </body>
-
 </html>

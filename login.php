@@ -1,4 +1,4 @@
-```php
+
 <?php
 
 session_start();
@@ -17,121 +17,74 @@ if (isset($_POST['login'])) {
 
     } else {
 
-        $email = mysqli_real_escape_string($koneksi, $email);
-
-        /*
-        =====================================================
-        CARI AKUN BERDASARKAN USERNAME
-        =====================================================
-        */
-
-        $query = mysqli_query(
+        $stmt = mysqli_prepare(
             $koneksi,
-            "SELECT
-                id,
-                nama,
-                username,
-                password,
-                role,
-                aktif
+            "SELECT id, nama, email, password, role, aktif
              FROM users
-             WHERE username = '$email'
+             WHERE email = ?
              LIMIT 1"
         );
 
+        mysqli_stmt_bind_param($stmt, "s", $email);
+        mysqli_stmt_execute($stmt);
+
+        $query = mysqli_stmt_get_result($stmt);
+
         if (!$query) {
-
-            die(
-                "Error database: " .
-                mysqli_error($koneksi)
-            );
+            die("Error database: " . mysqli_error($koneksi));
         }
-
 
         if (mysqli_num_rows($query) == 1) {
 
             $user = mysqli_fetch_assoc($query);
 
-
-            /*
-            =================================================
-            CEK AKUN AKTIF
-            =================================================
-            */
-
             if ($user['aktif'] != 1) {
 
                 $pesan = "Akun tidak aktif.";
 
-            }
+            } elseif ($password !== $user['password']) {
 
+                $pesan = "Email atau password salah.";
 
-            /*
-            =================================================
-            CEK PASSWORD
-            =================================================
-            
-            Password di database kamu sekarang masih:
-            admin123
-            guru123
-            walikelas123
+            } elseif (!in_array($user['role'], ['admin', 'guru'])) {
 
-            Jadi kita cocokkan langsung dulu.
-            */
-
-            elseif ($password === $user['password']) {
-
-                $_SESSION['login'] = true;
-
-                $_SESSION['user_id'] = $user['id'];
-
-                $_SESSION['nama'] = $user['nama'];
-
-                $_SESSION['email'] = $user['username'];
-
-                $_SESSION['role'] = $user['role'];
-
-
-                /*
-                ==============================
-                MASUK DASHBOARD
-                ==============================
-                */
-
-                header("Location: dashboard.php");
-                exit;
+                $pesan = "Akun ini tidak memiliki akses login.";
 
             } else {
 
-                $pesan = "Email atau password salah.";
-            }
+                session_regenerate_id(true);
 
+                $_SESSION['login'] = true;
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['nama'] = $user['nama'];
+                $_SESSION['email'] = $user['email'];
+                $_SESSION['role'] = $user['role'];
+
+                header("Location: dashboard.php");
+                exit;
+            }
 
         } else {
 
             $pesan = "Email atau password salah.";
+
         }
+
+        mysqli_stmt_close($stmt);
     }
 }
 
 ?>
 
-
 <!DOCTYPE html>
-
 <html lang="id">
 
 <head>
 
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>Login Sistem</title>
-
+    <title>Login | Sistem Pelanggaran Siswa</title>
 
     <style>
 
@@ -141,183 +94,272 @@ if (isset($_POST['login'])) {
 
         body {
             margin: 0;
+            min-height: 100vh;
             font-family: Arial, sans-serif;
-            background: #f4f4f4;
+            background: linear-gradient(135deg, #123c50, #176b80, #234c70);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
         }
 
         .login-container {
-            min-height: 100vh;
-
-            display: flex;
-
-            justify-content: center;
-
-            align-items: center;
+            width: 100%;
+            max-width: 420px;
         }
 
         .login-box {
-            width: 360px;
-
             background: white;
+            padding: 38px 35px;
+            border-radius: 12px;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.2);
+        }
 
-            padding: 30px;
-
-            border: 1px solid #ddd;
-
-            border-radius: 8px;
+        .logo {
+            width: 65px;
+            height: 65px;
+            background: #e5f2f5;
+            color: #176b80;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            margin: 0 auto 18px;
         }
 
         h1 {
             text-align: center;
-
-            margin-top: 0;
-
-            font-size: 25px;
+            font-size: 23px;
+            margin: 0 0 10px;
+            color: #263746;
         }
 
         .deskripsi {
             text-align: center;
-
             color: #777;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-bottom: 28px;
+        }
 
-            font-size: 14px;
-
-            margin-bottom: 25px;
+        .garis {
+            width: 45px;
+            height: 3px;
+            background: #176b80;
+            margin: 0 auto 25px;
+            border-radius: 5px;
         }
 
         .error {
-            background: #f8d7da;
+            background: #fce8e8;
+            border: 1px solid #f5bcbc;
+            color: #a32222;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 18px;
+            font-size: 13px;
+        }
 
-            border: 1px solid #f5c2c7;
-
-            color: #842029;
-
-            padding: 10px;
-
-            border-radius: 5px;
-
-            margin-bottom: 15px;
-
-            font-size: 14px;
+        .form-group {
+            margin-bottom: 18px;
         }
 
         label {
             display: block;
-
-            font-weight: bold;
-
             font-size: 14px;
-
-            margin-bottom: 6px;
+            font-weight: bold;
+            color: #344054;
+            margin-bottom: 8px;
         }
 
         input {
             width: 100%;
-
-            padding: 10px;
-
-            border: 1px solid #ccc;
-
-            border-radius: 5px;
-
-            margin-bottom: 15px;
-
+            padding: 13px;
+            border: 1px solid #d0d5dd;
+            border-radius: 6px;
             font-size: 14px;
+            outline: none;
+            transition: 0.2s;
         }
 
-        button {
-            width: 100%;
+        input:focus {
+            border-color: #176b80;
+            box-shadow: 0 0 0 3px rgba(23, 107, 128, 0.12);
+        }
 
-            padding: 11px;
+        .password-wrapper {
+            position: relative;
+        }
 
+        .password-wrapper input {
+            padding-right: 65px;
+        }
+
+        .lihat-password {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
             border: none;
-
-            border-radius: 5px;
-
-            background: #176b80;
-
-            color: white;
-
+            background: none;
+            color: #176b80;
             cursor: pointer;
-
-            font-size: 14px;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 5px;
+            width: auto;
         }
 
-        button:hover {
-            background: #0d5364;
+        .btn-login {
+            width: 100%;
+            padding: 13px;
+            border: none;
+            border-radius: 6px;
+            background: #176b80;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: 0.2s;
+        }
+
+        .btn-login:hover {
+            background: #105466;
+            transform: translateY(-1px);
+        }
+
+        .footer {
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+            margin-top: 25px;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 480px) {
+
+            .login-box {
+                padding: 30px 23px;
+            }
+
+            h1 {
+                font-size: 21px;
+            }
+
         }
 
     </style>
 
 </head>
 
-
 <body>
-
 
 <div class="login-container">
 
     <div class="login-box">
 
-        <h1>Login Sistem</h1>
-
-        <div class="deskripsi">
-            Sistem Informasi Pelanggaran Siswa
+        <div class="logo">
+            ⚖
         </div>
 
+        <h1>Selamat Datang</h1>
+
+        <div class="deskripsi">
+            Sistem Informasi<br>
+            Pelanggaran Siswa
+        </div>
+
+        <div class="garis"></div>
 
         <?php if ($pesan != "") { ?>
 
             <div class="error">
-
                 <?= htmlspecialchars($pesan); ?>
-
             </div>
 
         <?php } ?>
 
-
         <form method="POST">
 
-            <label>
-                Email
-            </label>
+            <div class="form-group">
 
-            <input
-                type="email"
-                name="email"
-                placeholder="Masukkan email"
-                required
-            >
+                <label>Email</label>
 
+                <input
+                    type="email"
+                    name="email"
+                    placeholder="Masukkan email Anda"
+                    value="<?= htmlspecialchars($_POST['email'] ?? ''); ?>"
+                    required
+                >
 
-            <label>
-                Password
-            </label>
+            </div>
 
-            <input
-                type="password"
-                name="password"
-                placeholder="Masukkan password"
-                required
-            >
+            <div class="form-group">
 
+                <label>Password</label>
+
+                <div class="password-wrapper">
+
+                    <input
+                        type="password"
+                        name="password"
+                        id="password"
+                        placeholder="Masukkan password"
+                        required
+                    >
+
+                    <button
+                        type="button"
+                        class="lihat-password"
+                        onclick="togglePassword()"
+                    >
+                        Lihat
+                    </button>
+
+                </div>
+
+            </div>
 
             <button
                 type="submit"
                 name="login"
+                class="btn-login"
             >
-                Login
+                LOGIN
             </button>
 
         </form>
+
+        <div class="footer">
+            Sistem Informasi Pelanggaran Siswa<br>
+            © 2026 UKK - Semua Hak Dilindungi
+        </div>
 
     </div>
 
 </div>
 
+<script>
+
+function togglePassword() {
+
+    const password = document.getElementById("password");
+    const tombol = document.querySelector(".lihat-password");
+
+    if (password.type === "password") {
+        password.type = "text";
+        tombol.innerText = "Sembunyi";
+    } else {
+        password.type = "password";
+        tombol.innerText = "Lihat";
+    }
+
+}
+
+</script>
 
 </body>
-
 </html>
-```

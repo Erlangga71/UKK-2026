@@ -1,3 +1,4 @@
+
 <?php
 
 session_start();
@@ -11,19 +12,10 @@ include "database.php";
 
 $role = $_SESSION['role'] ?? '';
 
-/* =========================
-   CEK ADMIN
-========================= */
-
 if ($role != 'admin') {
     echo "Akses ditolak.";
     exit;
 }
-
-
-/* =========================
-   AMBIL ID
-========================= */
 
 $id = intval($_GET['id'] ?? 0);
 
@@ -32,6 +24,7 @@ if ($id <= 0) {
     exit;
 }
 
+$pesan = "";
 
 /* =========================
    SIMPAN PERUBAHAN
@@ -42,63 +35,81 @@ if (isset($_POST['update'])) {
     $nama = trim($_POST['nama'] ?? '');
     $tanggal_mulai = $_POST['tanggal_mulai'] ?? '';
     $tanggal_selesai = $_POST['tanggal_selesai'] ?? '';
+    $aktif = isset($_POST['aktif']) ? intval($_POST['aktif']) : 0;
 
-    if (
-        $nama == '' ||
-        $tanggal_mulai == '' ||
-        $tanggal_selesai == ''
-    ) {
+    if ($nama == '' || $tanggal_mulai == '' || $tanggal_selesai == '') {
 
         $pesan = "Semua data harus diisi.";
 
+    } elseif ($tanggal_selesai < $tanggal_mulai) {
+
+        $pesan = "Tanggal selesai tidak boleh sebelum tanggal mulai.";
+
     } else {
 
-        $nama_db = mysqli_real_escape_string(
-            $koneksi,
-            $nama
-        );
+        mysqli_begin_transaction($koneksi);
 
-        $tanggal_mulai_db = mysqli_real_escape_string(
-            $koneksi,
-            $tanggal_mulai
-        );
+        try {
 
-        $tanggal_selesai_db = mysqli_real_escape_string(
-            $koneksi,
-            $tanggal_selesai
-        );
+            // Jika aktif, nonaktifkan tahun ajaran lainnya
+            if ($aktif == 1) {
 
+                $nonaktif = mysqli_query(
+                    $koneksi,
+                    "UPDATE tahun_ajaran
+                     SET aktif = 0
+                     WHERE id != $id"
+                );
 
-        /* =========================
-           UPDATE DATA
-        ========================= */
+                if (!$nonaktif) {
+                    throw new Exception(mysqli_error($koneksi));
+                }
+            }
 
-        $update = mysqli_query(
-            $koneksi,
-            "UPDATE tahun_ajaran SET
-                nama = '$nama_db',
-                tanggal_mulai = '$tanggal_mulai_db',
-                tanggal_selesai = '$tanggal_selesai_db'
-             WHERE id = $id"
-        );
-
-
-        if ($update) {
-
-            header(
-                "Location: kelola_tahun_ajaran.php"
+            // Update data tahun ajaran
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "UPDATE tahun_ajaran
+                 SET nama = ?,
+                     tanggal_mulai = ?,
+                     tanggal_selesai = ?,
+                     aktif = ?
+                 WHERE id = ?"
             );
 
+            if (!$stmt) {
+                throw new Exception(mysqli_error($koneksi));
+            }
+
+            mysqli_stmt_bind_param(
+                $stmt,
+                "sssii",
+                $nama,
+                $tanggal_mulai,
+                $tanggal_selesai,
+                $aktif,
+                $id
+            );
+
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception(mysqli_stmt_error($stmt));
+            }
+
+            mysqli_stmt_close($stmt);
+
+            mysqli_commit($koneksi);
+
+            header("Location: kelola_tahun_ajaran.php");
             exit;
 
-        } else {
+        } catch (Exception $e) {
 
-            $pesan = "Gagal menyimpan perubahan: " .
-                     mysqli_error($koneksi);
+            mysqli_rollback($koneksi);
+
+            $pesan = "Gagal menyimpan perubahan: " . $e->getMessage();
         }
     }
 }
-
 
 /* =========================
    AMBIL DATA
@@ -106,33 +117,20 @@ if (isset($_POST['update'])) {
 
 $query = mysqli_query(
     $koneksi,
-    "SELECT
-        id,
-        nama,
-        tanggal_mulai,
-        tanggal_selesai,
-        aktif
+    "SELECT id, nama, tanggal_mulai, tanggal_selesai, aktif
      FROM tahun_ajaran
      WHERE id = $id
      LIMIT 1"
 );
 
-
 if (!$query) {
-
-    die(
-        "Query error: " .
-        mysqli_error($koneksi)
-    );
+    die("Query error: " . mysqli_error($koneksi));
 }
 
-
 if (mysqli_num_rows($query) == 0) {
-
     echo "Data tahun ajaran tidak ditemukan.";
     exit;
 }
-
 
 $data = mysqli_fetch_assoc($query);
 
@@ -144,120 +142,34 @@ $data = mysqli_fetch_assoc($query);
 <head>
 
 <meta charset="UTF-8">
-
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>Edit Tahun Ajaran</title>
 
+<!-- BOOTSTRAP 5 -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
 <style>
 
-* {
-    box-sizing: border-box;
-}
+/* CSS SENDIRI */
 
 body {
-    margin: 0;
-    font-family: Arial, sans-serif;
     background: #f4f6f8;
-    color: #333;
+    font-family: Arial, sans-serif;
 }
 
 .content {
     width: 700px;
-    max-width: 90%;
+    max-width: 92%;
     margin: 50px auto;
 }
 
-.box {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 25px;
-}
-
-h1 {
-    margin-top: 0;
-    font-size: 24px;
-}
-
-p {
-    color: #777;
-}
-
-.form-group {
-    margin-bottom: 17px;
-}
-
-label {
-    display: block;
-    margin-bottom: 7px;
-    font-size: 13px;
-    font-weight: bold;
-}
-
-input {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-size: 14px;
-}
-
-input:focus {
-    outline: none;
-    border-color: #687280;
-}
-
-button,
-a {
-    display: inline-block;
-    padding: 10px 16px;
-    border-radius: 5px;
-    text-decoration: none;
-    font-size: 14px;
-    cursor: pointer;
-}
-
-button {
-    border: none;
-    background: #687280;
-    color: white;
-}
-
-button:hover {
-    background: #56606d;
-}
-
-.kembali {
-    background: #ddd;
-    color: #333;
-    margin-left: 5px;
-}
-
-.kembali:hover {
-    background: #ccc;
-}
-
-.pesan {
-    background: #fee2e2;
-    color: #b91c1c;
-    border: 1px solid #fecaca;
-    padding: 10px;
-    margin-bottom: 18px;
-    border-radius: 5px;
-}
-
-.status {
-    margin-bottom: 20px;
-    padding: 10px;
+.status-box {
     background: #f1f5f9;
     border: 1px solid #ddd;
     border-radius: 5px;
-}
-
-.status b {
-    color: #333;
+    padding: 12px;
+    margin-bottom: 20px;
 }
 
 </style>
@@ -268,122 +180,154 @@ button:hover {
 
 <div class="content">
 
-    <div class="box">
+    <div class="card shadow-sm">
 
-        <h1>
-            Edit Tahun Ajaran
-        </h1>
+        <div class="card-body p-4">
 
-        <p>
-            Ubah data tahun ajaran di bawah ini.
-        </p>
+            <h4 class="mb-2">
+                Edit Tahun Ajaran
+            </h4>
 
+            <p class="text-secondary mb-4">
+                Ubah data tahun ajaran di bawah ini.
+            </p>
 
-        <?php if (isset($pesan)) { ?>
+            <!-- PESAN ERROR -->
 
-            <div class="pesan">
+            <?php if ($pesan != '') { ?>
 
-                <?= htmlspecialchars($pesan); ?>
-
-            </div>
-
-        <?php } ?>
-
-
-        <div class="status">
-
-            Status:
-            
-            <?php if ($data['aktif'] == 1) { ?>
-
-                <b style="color:green;">
-                    Aktif
-                </b>
-
-            <?php } else { ?>
-
-                <b style="color:red;">
-                    Tidak Aktif
-                </b>
+                <div class="alert alert-danger">
+                    <?= htmlspecialchars($pesan); ?>
+                </div>
 
             <?php } ?>
 
+            <!-- STATUS SAAT INI -->
+
+            <div class="status-box">
+
+                Status saat ini:
+
+                <?php if ($data['aktif'] == 1) { ?>
+
+                    <span class="badge bg-success">
+                        Aktif
+                    </span>
+
+                <?php } else { ?>
+
+                    <span class="badge bg-danger">
+                        Tidak Aktif
+                    </span>
+
+                <?php } ?>
+
+            </div>
+
+            <!-- FORM EDIT -->
+
+            <form method="POST">
+
+                <div class="mb-3">
+
+                    <label class="form-label">
+                        Nama Tahun Ajaran
+                    </label>
+
+                    <input
+                        type="text"
+                        name="nama"
+                        class="form-control"
+                        value="<?= htmlspecialchars($data['nama']); ?>"
+                        placeholder="Contoh: 2026/2027"
+                        required
+                    >
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label class="form-label">
+                        Tanggal Mulai
+                    </label>
+
+                    <input
+                        type="date"
+                        name="tanggal_mulai"
+                        class="form-control"
+                        value="<?= htmlspecialchars($data['tanggal_mulai']); ?>"
+                        required
+                    >
+
+                </div>
+
+                <div class="mb-3">
+
+                    <label class="form-label">
+                        Tanggal Selesai
+                    </label>
+
+                    <input
+                        type="date"
+                        name="tanggal_selesai"
+                        class="form-control"
+                        value="<?= htmlspecialchars($data['tanggal_selesai']); ?>"
+                        required
+                    >
+
+                </div>
+
+                <div class="mb-4">
+
+                    <label class="form-label">
+                        Status Tahun Ajaran
+                    </label>
+
+                    <select
+                        name="aktif"
+                        class="form-select"
+                    >
+
+                        <option
+                            value="1"
+                            <?= $data['aktif'] == 1 ? 'selected' : ''; ?>
+                        >
+                            Aktif
+                        </option>
+
+                        <option
+                            value="0"
+                            <?= $data['aktif'] == 0 ? 'selected' : ''; ?>
+                        >
+                            Tidak Aktif
+                        </option>
+
+                    </select>
+
+                </div>
+
+                <button
+                    type="submit"
+                    name="update"
+                    class="btn btn-primary"
+                >
+                    Simpan Perubahan
+                </button>
+
+                <a
+                    href="kelola_tahun_ajaran.php"
+                    class="btn btn-secondary"
+                >
+                    Kembali
+                </a>
+
+            </form>
+
         </div>
-
-
-        <form method="POST">
-
-
-            <div class="form-group">
-
-                <label>
-                    Tahun Ajaran
-                </label>
-
-                <input
-                    type="text"
-                    name="nama"
-                    value="<?= htmlspecialchars($data['nama']); ?>"
-                    placeholder="Contoh: 2026/2027"
-                    required
-                >
-
-            </div>
-
-
-            <div class="form-group">
-
-                <label>
-                    Tanggal Mulai
-                </label>
-
-                <input
-                    type="date"
-                    name="tanggal_mulai"
-                    value="<?= htmlspecialchars($data['tanggal_mulai']); ?>"
-                    required
-                >
-
-            </div>
-
-
-            <div class="form-group">
-
-                <label>
-                    Tanggal Selesai
-                </label>
-
-                <input
-                    type="date"
-                    name="tanggal_selesai"
-                    value="<?= htmlspecialchars($data['tanggal_selesai']); ?>"
-                    required
-                >
-
-            </div>
-
-
-            <button
-                type="submit"
-                name="update"
-            >
-                Simpan Perubahan
-            </button>
-
-
-            <a
-                href="kelola_tahun_ajaran.php"
-                class="kembali"
-            >
-                Kembali
-            </a>
-
-        </form>
 
     </div>
 
 </div>
 
 </body>
-
 </html>
