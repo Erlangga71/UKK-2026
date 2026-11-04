@@ -1,4 +1,4 @@
-```php
+
 <?php
 
 $host = "localhost";
@@ -13,4 +13,3 @@ if (!$koneksi) {
 }
 
 ?>
-```
