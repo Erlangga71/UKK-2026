@@ -1,331 +1,297 @@
 
 <?php
-
 session_start();
+require_once "database.php";
 
 if (!isset($_SESSION['login'])) {
     header("Location: login.php");
     exit;
 }
 
-include "database.php";
-
-$role = $_SESSION['role'] ?? '';
-
-if ($role != 'admin') {
+if (($_SESSION['role'] ?? '') !== 'admin') {
     die("Akses ditolak.");
 }
 
 $error = "";
 
-/* TAMBAH KATEGORI */
+/* =========================
+   TAMBAH KATEGORI
+========================= */
 
 if (isset($_POST['simpan'])) {
-
     $nama = trim($_POST['nama'] ?? '');
 
-    if ($nama == '') {
-
+    if ($nama === '') {
         $error = "Nama kategori wajib diisi.";
-
     } else {
-
-        $nama_db = mysqli_real_escape_string($koneksi, $nama);
-
-        $cek = mysqli_query(
+        $cek = mysqli_prepare(
             $koneksi,
-            "SELECT id FROM kategori
-             WHERE nama = '$nama_db'
-             LIMIT 1"
+            "SELECT id FROM kategori WHERE nama = ? LIMIT 1"
         );
 
-        if (!$cek) {
-            die("Error database: " . mysqli_error($koneksi));
-        }
+        mysqli_stmt_bind_param($cek, "s", $nama);
+        mysqli_stmt_execute($cek);
+        $hasil_cek = mysqli_stmt_get_result($cek);
 
-        if (mysqli_num_rows($cek) > 0) {
-
+        if (mysqli_num_rows($hasil_cek) > 0) {
             $error = "Kategori tersebut sudah ada.";
-
         } else {
-
-            $query = mysqli_query(
+            $stmt = mysqli_prepare(
                 $koneksi,
-                "INSERT INTO kategori (nama)
-                 VALUES ('$nama_db')"
+                "INSERT INTO kategori (nama) VALUES (?)"
             );
 
-            if ($query) {
+            mysqli_stmt_bind_param($stmt, "s", $nama);
 
+            if (mysqli_stmt_execute($stmt)) {
                 header("Location: kelola_pelanggaran_kategori.php");
                 exit;
-
             } else {
-
                 $error = "Gagal menambahkan kategori: " . mysqli_error($koneksi);
             }
         }
     }
 }
 
-/* HAPUS KATEGORI */
+/* =========================
+   HAPUS KATEGORI
+========================= */
 
 if (isset($_GET['hapus'])) {
-
-    $id = (int) $_GET['hapus'];
+    $id = (int)$_GET['hapus'];
 
     if ($id > 0) {
-
-        $hapus = mysqli_query(
+        $stmt = mysqli_prepare(
             $koneksi,
-            "DELETE FROM kategori WHERE id = $id"
+            "DELETE FROM kategori WHERE id = ?"
         );
 
-        if (!$hapus) {
-            die("Gagal menghapus kategori: " . mysqli_error($koneksi));
+        mysqli_stmt_bind_param($stmt, "i", $id);
+
+        if (!mysqli_stmt_execute($stmt)) {
+            $error = "Kategori tidak dapat dihapus. Pastikan kategori tidak sedang digunakan oleh jenis pelanggaran.";
+        } else {
+            header("Location: kelola_pelanggaran_kategori.php");
+            exit;
         }
     }
-
-    header("Location: kelola_pelanggaran_kategori.php");
-    exit;
 }
 
-/* DATA KATEGORI */
+/* =========================
+   PENCARIAN
+========================= */
 
-$data = mysqli_query(
+$cari = trim($_GET['cari'] ?? '');
+$cari_sql = "%" . $cari . "%";
+
+$stmt_total = mysqli_prepare(
+    $koneksi,
+    "SELECT COUNT(*) AS total
+     FROM kategori
+     WHERE nama LIKE ?"
+);
+
+mysqli_stmt_bind_param($stmt_total, "s", $cari_sql);
+mysqli_stmt_execute($stmt_total);
+
+$total_data = (int)mysqli_fetch_assoc(
+    mysqli_stmt_get_result($stmt_total)
+)['total'];
+
+/* =========================
+   PAGINATION
+========================= */
+
+$batas = 5;
+$total_halaman = max(1, (int)ceil($total_data / $batas));
+
+$halaman = max(1, (int)($_GET['halaman'] ?? 1));
+$halaman = min($halaman, $total_halaman);
+
+$offset = ($halaman - 1) * $batas;
+
+/* =========================
+   DATA KATEGORI
+========================= */
+
+$stmt_data = mysqli_prepare(
     $koneksi,
     "SELECT id, nama
      FROM kategori
-     ORDER BY id ASC"
+     WHERE nama LIKE ?
+     ORDER BY id ASC
+     LIMIT ? OFFSET ?"
 );
 
-if (!$data) {
-    die("Gagal mengambil data kategori: " . mysqli_error($koneksi));
-}
+mysqli_stmt_bind_param(
+    $stmt_data,
+    "sii",
+    $cari_sql,
+    $batas,
+    $offset
+);
 
+mysqli_stmt_execute($stmt_data);
+$data = mysqli_stmt_get_result($stmt_data);
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kategori Pelanggaran</title>
 
-<title>Kategori Pelanggaran</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-<style>
+    <style>
+        body {
+            margin: 0;
+            background: #f4f6f8;
+            font-family: Arial, sans-serif;
+            color: #333;
+        }
 
-* {
-    box-sizing: border-box;
-}
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 220px;
+            height: 100vh;
+            padding: 20px 12px;
+            background: #687280;
+            overflow-y: auto;
+        }
 
-body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background: #f4f6f8;
-    color: #333;
-}
+        .sidebar-title {
+            color: white;
+            font-size: 19px;
+            font-weight: bold;
+            margin: 0 8px 25px;
+            line-height: 1.4;
+        }
 
-.sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    width: 220px;
-    height: 100vh;
-    background: #687280;
-    padding: 20px 12px;
-    overflow-y: auto;
-}
+        .sidebar a {
+            display: block;
+            padding: 11px 13px;
+            margin-bottom: 5px;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+        }
 
-.sidebar-title {
-    color: white;
-    font-size: 19px;
-    font-weight: bold;
-    margin: 0 8px 25px;
-    line-height: 1.4;
-}
+        .sidebar a:hover,
+        .sidebar a.active {
+            background: #4f5965;
+        }
 
-.sidebar a {
-    display: block;
-    padding: 11px 13px;
-    margin-bottom: 5px;
-    color: white;
-    text-decoration: none;
-    border-radius: 5px;
-    font-size: 14px;
-}
+        .sidebar .logout {
+            margin-top: 20px;
+            background: #b42323;
+        }
 
-.sidebar a:hover,
-.sidebar a.active {
-    background: #4f5965;
-}
+        .content {
+            margin-left: 220px;
+            padding: 30px;
+        }
 
-.logout {
-    margin-top: 20px;
-    background: #b42323;
-}
+        .header,
+        .box {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 7px;
+            padding: 22px;
+            margin-bottom: 20px;
+        }
 
-.content {
-    margin-left: 220px;
-    padding: 30px;
-}
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
 
-.header {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 22px;
-    margin-bottom: 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
 
-.header h1 {
-    margin: 0;
-    font-size: 24px;
-}
+        .header p {
+            color: #777;
+            margin: 5px 0 0;
+        }
 
-.header p {
-    color: #777;
-    margin-bottom: 0;
-}
+        .btn-tambah {
+            background: #9dff00;
+            border: 1px solid #9dff00;
+            color: #222;
+            font-weight: bold;
+        }
 
-.box {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 22px;
-    margin-bottom: 20px;
-}
+        .btn-tambah:hover {
+            background: #8be000;
+            border-color: #8be000;
+            color: #222;
+        }
 
-.box h2 {
-    margin-top: 0;
-}
+        .btn-hapus {
+            background: #b42323;
+            color: white;
+        }
 
-.btn {
-    display: inline-block;
-    padding: 9px 14px;
-    border: none;
-    border-radius: 5px;
-    color: white;
-    text-decoration: none;
-    cursor: pointer;
-    font-size: 13px;
-}
+        .btn-hapus:hover {
+            background: #941d1d;
+            color: white;
+        }
 
-.btn-tambah {
-    background: #087f5b;
-}
+        .table thead th {
+            background: #687280;
+            color: white;
+            white-space: nowrap;
+        }
 
-.btn-simpan {
-    background: #687280;
-}
+        .table td {
+            vertical-align: middle;
+        }
 
-.btn-batal {
-    background: #777;
-}
+        .pagination .page-link {
+            color: #333;
+        }
 
-.btn-edit {
-    background: #086177;
-}
+        .pagination .active .page-link {
+            background: #687280;
+            border-color: #687280;
+            color: white;
+        }
 
-.btn-hapus {
-    background: #b42323;
-}
+        @media(max-width: 700px) {
+            .sidebar {
+                position: relative;
+                width: 100%;
+                height: auto;
+            }
 
-.form-group {
-    margin-bottom: 16px;
-}
+            .content {
+                margin-left: 0;
+                padding: 15px;
+            }
 
-label {
-    display: block;
-    margin-bottom: 6px;
-    font-size: 13px;
-    font-weight: bold;
-}
+            .header {
+                display: block;
+            }
 
-input {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-family: Arial, sans-serif;
-}
-
-.error {
-    background: #fee2e2;
-    color: #b91c1c;
-    border: 1px solid #fecaca;
-    padding: 10px;
-    margin-bottom: 15px;
-    border-radius: 5px;
-}
-
-.table-container {
-    overflow-x: auto;
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-th {
-    background: #687280;
-    color: white;
-    padding: 11px;
-    text-align: left;
-    font-size: 13px;
-}
-
-td {
-    padding: 11px;
-    border-bottom: 1px solid #ddd;
-    font-size: 13px;
-}
-
-tr:hover {
-    background: #f7f7f7;
-}
-
-@media(max-width:700px) {
-
-    .sidebar {
-        position: relative;
-        width: 100%;
-        height: auto;
-    }
-
-    .content {
-        margin-left: 0;
-        padding: 15px;
-    }
-
-    .header {
-        display: block;
-    }
-
-    .header .btn {
-        margin-top: 15px;
-    }
-
-}
-
-</style>
-
+            .header .btn {
+                margin-top: 15px;
+            }
+        }
+    </style>
 </head>
 
 <body>
 
 <div class="sidebar">
-
-    <div class="sidebar-title">
-        ⚖ Pelanggaran<br>
-        Siswa
-    </div>
+    <div class="sidebar-title">⚖ Pelanggaran<br>Siswa</div>
 
     <a href="dashboard.php">🏠 Dashboard</a>
     <a href="kelola_siswa.php">Data Siswa</a>
@@ -334,23 +300,17 @@ tr:hover {
     <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
     <a href="kelola_wali_kelas.php">Wali Kelas</a>
     <a href="penempatan_siswa.php">Penempatan Siswa</a>
-
-    <a href="kelola_pelanggaran_kategori.php" class="active">
-        ⚠ Kategori Pelanggaran
-    </a>
-
+    <a href="kelola_pelanggaran_kategori.php" class="active">⚠ Kategori Pelanggaran</a>
     <a href="pelanggaran.php">Data Pelanggaran</a>
     <a href="tindakan.php">Data Tindakan</a>
     <a href="laporan.php">Laporan</a>
     <a href="about_me.php">ℹ About Me</a>
     <a href="logout.php" class="logout">🚪 Logout</a>
-
 </div>
 
 <div class="content">
 
     <div class="header">
-
         <div>
             <h1>Kategori Pelanggaran</h1>
             <p>Kelola kategori pelanggaran siswa.</p>
@@ -360,61 +320,65 @@ tr:hover {
            class="btn btn-tambah">
             + Tambah Kategori
         </a>
-
     </div>
 
-    <?php if ($error != "") { ?>
-
-        <div class="error">
+    <?php if ($error !== ''): ?>
+        <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
         </div>
+    <?php endif; ?>
 
-    <?php } ?>
-
-    <?php if (isset($_GET['tambah'])) { ?>
-
+    <?php if (isset($_GET['tambah']) && $_GET['tambah'] == '1'): ?>
         <div class="box">
-
-            <h2>Tambah Kategori Pelanggaran</h2>
+            <h5 class="mb-3">Tambah Kategori Pelanggaran</h5>
 
             <form method="POST">
-
-                <div class="form-group">
-
-                    <label>Nama Kategori</label>
-
+                <div class="mb-3">
+                    <label class="form-label">Nama Kategori</label>
                     <input
                         type="text"
                         name="nama"
+                        class="form-control"
                         placeholder="Contoh: Kedisiplinan"
                         required
                     >
-
                 </div>
 
-                <button type="submit" name="simpan" class="btn btn-simpan">
+                <button type="submit" name="simpan" class="btn btn-tambah">
                     Simpan Kategori
                 </button>
 
-                <a href="kelola_pelanggaran_kategori.php"
-                   class="btn btn-batal">
+                <a href="kelola_pelanggaran_kategori.php" class="btn btn-secondary">
                     Batal
                 </a>
-
             </form>
-
         </div>
-
-    <?php } ?>
+    <?php endif; ?>
 
     <div class="box">
+        <h5 class="mb-3">Daftar Kategori Pelanggaran</h5>
 
-        <h2>Daftar Kategori Pelanggaran</h2>
+        <form method="GET" class="row g-2 mb-3">
+            <div class="col-md-5">
+                <input
+                    type="text"
+                    name="cari"
+                    class="form-control"
+                    placeholder="Cari nama kategori..."
+                    value="<?= htmlspecialchars($cari); ?>"
+                >
+            </div>
 
-        <div class="table-container">
+            <div class="col-auto">
+                <button type="submit" class="btn btn-secondary">Cari</button>
+                <a href="kelola_pelanggaran_kategori.php" class="btn btn-outline-secondary">
+                    Reset
+                </a>
+            </div>
+        </form>
 
-            <table>
-
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
                 <thead>
                     <tr>
                         <th>No</th>
@@ -424,66 +388,61 @@ tr:hover {
                 </thead>
 
                 <tbody>
+                    <?php if ($data && mysqli_num_rows($data) > 0): ?>
+                        <?php $no = $offset + 1; ?>
 
-                <?php
+                        <?php while ($row = mysqli_fetch_assoc($data)): ?>
+                            <tr>
+                                <td><?= $no++; ?></td>
 
-                $no = 1;
+                                <td>
+                                    <b><?= htmlspecialchars($row['nama']); ?></b>
+                                </td>
 
-                if (mysqli_num_rows($data) > 0) {
+                                <td class="text-nowrap">
+                                    <a
+                                        href="edit_kategori.php?id=<?= $row['id']; ?>"
+                                        class="btn btn-sm btn-tambah"
+                                    >Edit</a>
 
-                    while ($row = mysqli_fetch_assoc($data)) {
+                                    <a
+                                        href="kelola_pelanggaran_kategori.php?hapus=<?= $row['id']; ?>"
+                                        class="btn btn-sm btn-hapus"
+                                        onclick="return confirm('Yakin ingin menghapus kategori ini?')"
+                                    >Hapus</a>
+                                </td>
+                            </tr>
+                        <?php endwhile; ?>
 
-                ?>
-
-                    <tr>
-
-                        <td><?= $no++; ?></td>
-
-                        <td>
-                            <b><?= htmlspecialchars($row['nama']); ?></b>
-                        </td>
-
-                        <td>
-
-                            <a
-                                href="edit_kategori.php?id=<?= $row['id']; ?>"
-                                class="btn btn-edit">
-                                Edit
-                            </a>
-
-                            <a
-                                href="kelola_pelanggaran_kategori.php?hapus=<?= $row['id']; ?>"
-                                class="btn btn-hapus"
-                                onclick="return confirm('Yakin ingin menghapus kategori ini?')">
-                                Hapus
-                            </a>
-
-                        </td>
-
-                    </tr>
-
-                <?php
-
-                    }
-
-                } else {
-
-                ?>
-
-                    <tr>
-                        <td colspan="3" style="text-align:center;padding:25px;">
-                            Belum ada kategori pelanggaran.
-                        </td>
-                    </tr>
-
-                <?php } ?>
-
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="3" class="text-center py-4">
+                                Belum ada kategori pelanggaran.
+                            </td>
+                        </tr>
+                    <?php endif; ?>
                 </tbody>
-
             </table>
-
         </div>
 
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <small class="text-muted">
+                Total <?= $total_data; ?> kategori
+            </small>
+
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <?php for ($i = 1; $i <= $total_halaman; $i++): ?>
+                        <li class="page-item <?= ($halaman == $i) ? 'active' : ''; ?>">
+                            <a
+                                class="page-link"
+                                href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>"
+                            ><?= $i; ?></a>
+                        </li>
+                    <?php endfor; ?>
+                </ul>
+            </nav>
+        </div>
     </div>
 
 </div>

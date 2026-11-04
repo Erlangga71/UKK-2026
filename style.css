@@ -1,82 +1,137 @@
+
 * {
     box-sizing: border-box;
 }
 
+html,
 body {
     margin: 0;
+    min-height: 100%;
     font-family: Arial, sans-serif;
-    background: #f4f4f4;
+    background: #f4f6f8;
     color: #333;
 }
 
 /* =========================
-   LAYOUT
+   LAYOUT UTAMA
 ========================= */
 
 .layout {
-    display: flex;
+    display: block !important;
     min-height: 100vh;
+    width: 100%;
 }
 
 /* =========================
-   SIDEBAR
+   SIDEBAR SERAGAM
 ========================= */
 
 .sidebar {
-    width: 230px;
-    min-height: 100vh;
-    background: linear-gradient(#004d4d, #002b2b);
-    padding: 20px 15px;
-    flex-shrink: 0;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+
+    width: 230px !important;
+    min-width: 230px !important;
+    max-width: 230px !important;
+
+    height: 100vh !important;
+    min-height: 100vh !important;
+
+    background: #687280 !important;
+    padding: 15px 10px !important;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    flex: none !important;
+    flex-shrink: 0 !important;
+
+    z-index: 9999;
 }
 
-.sidebar h2 {
-    color: white;
-    font-size: 20px;
-    margin: 0 0 25px 10px;
+/* JUDUL SIDEBAR */
+
+.sidebar-title {
+    display: block;
+    color: white !important;
+    font-size: 15px !important;
+    font-weight: bold !important;
+    line-height: 20px !important;
+
+    margin: 0 0 22px 5px !important;
+    padding: 3px 0 !important;
 }
+
+/* MENU SIDEBAR */
 
 .sidebar a {
-    display: block;
-    color: white;
-    text-decoration: none;
-    padding: 12px 15px;
-    margin-bottom: 8px;
-    border-radius: 8px;
-    background: rgba(255,255,255,0.08);
+    display: block !important;
+    width: 100% !important;
+
+    color: white !important;
+    text-decoration: none !important;
+
+    font-size: 12px !important;
+    font-weight: normal !important;
+
+    padding: 10px 10px !important;
+    margin: 0 0 4px 0 !important;
+
+    border-radius: 4px !important;
+    background: transparent !important;
 }
+
+/* MENU AKTIF DAN HOVER */
 
 .sidebar a:hover,
 .sidebar a.active {
-    background: #176b80;
+    background: #4f5965 !important;
+    color: white !important;
 }
 
-.sidebar .logout {
-    margin-top: 25px;
-    background: #7b1e1e;
+/* LOGOUT */
+
+.sidebar a.logout {
+    display: block !important;
+    margin-top: 22px !important;
+
+    background: #bd2525 !important;
+    color: white !important;
+
+    border-radius: 4px !important;
 }
 
-.sidebar .logout:hover {
-    background: #a52a2a;
+.sidebar a.logout:hover {
+    background: #981c1c !important;
 }
 
 /* =========================
-   CONTENT
+   AREA KONTEN
 ========================= */
 
 .content {
-    flex: 1;
-    padding: 30px 45px;
-    background: #f7f7f7;
+    display: block;
+    width: calc(100% - 230px) !important;
+    min-height: 100vh;
+
+    margin-left: 230px !important;
+    padding: 24px !important;
+
+    background: #f4f6f8;
 }
 
+/* =========================
+   JUDUL HALAMAN
+========================= */
+
 .top-title {
-    margin-bottom: 25px;
+    margin-bottom: 20px;
 }
 
 .top-title h1 {
     margin: 0;
-    font-size: 32px;
+    font-size: 28px;
     color: #222;
 }
 
@@ -86,20 +141,43 @@ body {
 }
 
 /* =========================
+   BOX INFORMASI
+========================= */
+
+.content-box {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 18px;
+    margin-bottom: 15px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.content-box h2 {
+    margin-top: 0;
+    color: #222;
+}
+
+.content-box .subjudul {
+    color: #777;
+    margin-bottom: 20px;
+}
+
+/* =========================
    STATISTIK
 ========================= */
 
 .statistik {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 18px;
-    margin-bottom: 35px;
+    gap: 15px;
+    margin-bottom: 20px;
 }
 
 .stat-box {
     min-height: 100px;
     padding: 18px;
-    border-radius: 10px;
+    border-radius: 6px;
     color: white;
     display: flex;
     align-items: center;
@@ -107,17 +185,15 @@ body {
 }
 
 .stat-icon {
-    width: 50px;
-    height: 50px;
+    width: 45px;
+    height: 45px;
     background: white;
     color: #333;
-    border-radius: 8px;
-
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-
-    font-size: 25px;
+    font-size: 23px;
     flex-shrink: 0;
 }
 
@@ -132,40 +208,19 @@ body {
 }
 
 .stat-siswa {
-    background: linear-gradient(135deg, #d00091, #8b006b);
+    background: #8b006b;
 }
 
 .stat-pelanggaran {
-    background: linear-gradient(135deg, #3d00d9, #25008c);
+    background: #25008c;
 }
 
 .stat-bulan {
-    background: linear-gradient(135deg, #ef00a9, #c00086);
+    background: #c00086;
 }
 
 .stat-masalah {
-    background: linear-gradient(135deg, #167d91, #07566a);
-}
-
-/* =========================
-   BOX INFORMASI
-========================= */
-
-.content-box {
-    background: white;
-    border-radius: 8px;
-    padding: 25px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-}
-
-.content-box h2 {
-    margin-top: 0;
-    color: #222;
-}
-
-.content-box .subjudul {
-    color: #777;
-    margin-bottom: 20px;
+    background: #07566a;
 }
 
 /* =========================
@@ -173,6 +228,7 @@ body {
 ========================= */
 
 .table-wrapper {
+    width: 100%;
     overflow-x: auto;
 }
 
@@ -183,33 +239,34 @@ table {
 }
 
 table th {
-    background: #006b6b;
+    background: #687280;
     color: white;
-    padding: 12px;
+    padding: 10px;
     text-align: left;
-    font-size: 14px;
+    font-size: 13px;
 }
 
 table td {
-    padding: 12px;
+    padding: 10px;
     border-bottom: 1px solid #ddd;
+    font-size: 13px;
 }
 
 table tr:hover {
-    background: #f1fafa;
+    background: #f5f5f5;
 }
 
 /* =========================
-   BUTTON
+   TOMBOL
 ========================= */
 
 .btn {
     display: inline-block;
-    padding: 9px 15px;
+    padding: 8px 13px;
     background: #176b80;
     color: white;
     text-decoration: none;
-    border-radius: 5px;
+    border-radius: 4px;
 }
 
 .btn:hover {
@@ -217,38 +274,42 @@ table tr:hover {
 }
 
 /* =========================
-   MOBILE
+   RESPONSIVE
+   SIDEBAR TETAP 230PX
 ========================= */
 
 @media (max-width: 900px) {
 
     .sidebar {
-        width: 190px;
+        width: 230px !important;
+        min-width: 230px !important;
+        max-width: 230px !important;
     }
 
     .content {
-        padding: 25px;
+        width: calc(100% - 230px) !important;
+        margin-left: 230px !important;
+        padding: 18px !important;
     }
 
     .statistik {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, 1fr);
     }
 
 }
 
 @media (max-width: 600px) {
 
-    .layout {
-        display: block;
-    }
-
     .sidebar {
-        width: 100%;
-        min-height: auto;
+        width: 230px !important;
+        min-width: 230px !important;
+        max-width: 230px !important;
     }
 
     .content {
-        padding: 20px;
+        width: calc(100% - 230px) !important;
+        margin-left: 230px !important;
+        padding: 12px !important;
     }
 
     .statistik {

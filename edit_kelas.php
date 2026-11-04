@@ -1,14 +1,8 @@
 
 <?php
 
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
+session_start();
 require_once "database.php";
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
 
 /* =========================
    CEK LOGIN
@@ -20,23 +14,20 @@ if (!isset($_SESSION['login'])) {
 }
 
 /* =========================
-   CEK ROLE
-   HANYA ADMIN
+   CEK ROLE ADMIN
 ========================= */
 
 $role = $_SESSION['role'] ?? '';
 
 if ($role != 'admin') {
-    die("Akses ditolak. Halaman ini hanya untuk admin.");
+    die("Akses ditolak.");
 }
 
 /* =========================
-   AMBIL ID
+   AMBIL ID KELAS
 ========================= */
 
-$id = isset($_GET['id'])
-    ? (int) $_GET['id']
-    : 0;
+$id = (int)($_GET['id'] ?? 0);
 
 if ($id <= 0) {
     die("ID kelas tidak valid.");
@@ -46,28 +37,24 @@ if ($id <= 0) {
    AMBIL DATA KELAS
 ========================= */
 
-$query = mysqli_query(
+$stmt = mysqli_prepare(
     $koneksi,
-    "SELECT id, nama_kelas
-     FROM kelas
-     WHERE id = $id
-     LIMIT 1"
+    "SELECT id, nama_kelas FROM kelas WHERE id = ? LIMIT 1"
 );
 
-if (!$query) {
-    die(
-        "Query kelas error: " .
-        mysqli_error($koneksi)
-    );
-}
+mysqli_stmt_bind_param($stmt, "i", $id);
+mysqli_stmt_execute($stmt);
 
-$data = mysqli_fetch_assoc($query);
+$result = mysqli_stmt_get_result($stmt);
+$data = mysqli_fetch_assoc($result);
+
+mysqli_stmt_close($stmt);
 
 if (!$data) {
     die("Data kelas tidak ditemukan.");
 }
 
-$pesan = '';
+$pesan = "";
 
 /* =========================
    PROSES UPDATE
@@ -75,13 +62,7 @@ $pesan = '';
 
 if (isset($_POST['simpan'])) {
 
-    $nama_kelas = trim(
-        $_POST['nama_kelas'] ?? ''
-    );
-
-    /* =========================
-       VALIDASI
-    ========================= */
+    $nama_kelas = trim($_POST['nama_kelas'] ?? '');
 
     if ($nama_kelas == '') {
 
@@ -89,200 +70,126 @@ if (isset($_POST['simpan'])) {
 
     } else {
 
-        $nama_kelas = mysqli_real_escape_string(
-            $koneksi,
-            $nama_kelas
-        );
+        /* CEK NAMA KELAS DUPLIKAT */
 
-        /* =========================
-           CEK DUPLIKAT
-        ========================= */
-
-        $cek = mysqli_query(
+        $stmt = mysqli_prepare(
             $koneksi,
-            "SELECT id
-             FROM kelas
-             WHERE nama_kelas = '$nama_kelas'
-             AND id != $id
+            "SELECT id FROM kelas
+             WHERE nama_kelas = ?
+             AND id != ?
              LIMIT 1"
         );
 
-        if (!$cek) {
+        mysqli_stmt_bind_param($stmt, "si", $nama_kelas, $id);
+        mysqli_stmt_execute($stmt);
 
-            $pesan =
-                "Query pengecekan error: " .
-                mysqli_error($koneksi);
+        $cek = mysqli_stmt_get_result($stmt);
+        $ada = mysqli_num_rows($cek) > 0;
 
-        } elseif (mysqli_num_rows($cek) > 0) {
+        mysqli_stmt_close($stmt);
 
-            $pesan =
-                "Nama kelas tersebut sudah digunakan.";
+        if ($ada) {
+
+            $pesan = "Nama kelas tersebut sudah digunakan.";
 
         } else {
 
-            /* =========================
-               UPDATE DATA
-            ========================= */
+            /* UPDATE DATA KELAS */
 
-            $update = mysqli_query(
+            $stmt = mysqli_prepare(
                 $koneksi,
                 "UPDATE kelas
-                 SET nama_kelas = '$nama_kelas'
-                 WHERE id = $id"
+                 SET nama_kelas = ?
+                 WHERE id = ?"
             );
 
-            if ($update) {
+            mysqli_stmt_bind_param($stmt, "si", $nama_kelas, $id);
 
-                header(
-                    "Location: kelas.php"
-                );
+            if (mysqli_stmt_execute($stmt)) {
 
+                mysqli_stmt_close($stmt);
+
+                header("Location: kelola_kelas.php");
                 exit;
 
             } else {
 
-                $pesan =
-                    "Gagal mengubah data kelas: " .
-                    mysqli_error($koneksi);
+                $pesan = "Gagal mengubah data kelas: " . mysqli_error($koneksi);
+
+                mysqli_stmt_close($stmt);
             }
         }
     }
+
+    /* TAMPILKAN KEMBALI INPUT JIKA ADA ERROR */
+
+    $data['nama_kelas'] = $nama_kelas;
 }
 
 ?>
 
 <!DOCTYPE html>
-
 <html lang="id">
 
 <head>
 
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
+<title>Edit Data Kelas</title>
 
-<title>Edit Kelas</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
 
-* {
-    box-sizing: border-box;
-}
-
 body {
-    margin: 0;
+    background: #f4f6f8;
     font-family: Arial, sans-serif;
-    background: #f4f4f4;
-    color: #333;
 }
 
-.header {
-    background: #004d4d;
+.sidebar {
+    width: 220px;
+    background: #687280;
+}
+
+.sidebar .nav-link {
     color: white;
-    padding: 18px 30px;
-
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    font-size: 14px;
 }
 
-.header h2 {
-    margin: 0;
-    font-size: 20px;
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
+    background: #4f5965;
 }
 
-.kembali {
-    background: #176b80;
-    color: white;
-    text-decoration: none;
-    padding: 9px 14px;
-    border-radius: 5px;
+.content {
+    margin-left: 220px;
 }
 
-.kembali:hover {
-    background: #0d5364;
-}
-
-.container {
-    width: 90%;
-    max-width: 650px;
-    margin: 35px auto;
-}
-
-.box {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 25px;
-}
-
-.box h1 {
-    margin-top: 0;
-    font-size: 25px;
-}
-
-.deskripsi {
-    color: #777;
-    margin-bottom: 25px;
-}
-
-.form-group {
-    margin-bottom: 18px;
-}
-
-label {
-    display: block;
+.btn-stabilo {
+    background: #9dff00;
+    color: #1a3300;
     font-weight: bold;
-    margin-bottom: 7px;
-}
-
-input {
-    width: 100%;
-    padding: 11px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-size: 14px;
-}
-
-.btn {
-    display: inline-block;
-    padding: 10px 16px;
     border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    text-decoration: none;
-    font-size: 14px;
 }
 
-.btn-simpan {
-    background: #087f5b;
-    color: white;
+.btn-stabilo:hover {
+    background: #86e000;
+    color: #1a3300;
 }
 
-.btn-simpan:hover {
-    background: #066b4d;
-}
+@media (max-width: 700px) {
 
-.btn-batal {
-    background: #777;
-    color: white;
-    margin-left: 5px;
-}
+    .sidebar {
+        position: static !important;
+        width: 100%;
+        height: auto !important;
+    }
 
-.btn-batal:hover {
-    background: #555;
-}
+    .content {
+        margin-left: 0;
+    }
 
-.pesan {
-    background: #fff3cd;
-    border: 1px solid #ffe69c;
-    color: #664d03;
-    padding: 12px;
-    border-radius: 5px;
-    margin-bottom: 20px;
 }
 
 </style>
@@ -291,86 +198,196 @@ input {
 
 <body>
 
-<div class="header">
+<!-- SIDEBAR -->
 
-    <h2>
-        SI Pelanggaran
-    </h2>
+<div class="sidebar position-fixed top-0 start-0 vh-100 overflow-auto p-3">
 
-    <a
-        href="kelas.php"
-        class="kembali"
-    >
-        ← Kembali
+    <h5 class="text-white fw-bold mb-4 px-2">
+        ⚖ Pelanggaran<br>Siswa
+    </h5>
+
+    <ul class="nav flex-column gap-1">
+
+        <li>
+            <a class="nav-link" href="dashboard.php">
+                🏠 Dashboard
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link" href="kelola_siswa.php">
+                Data Siswa
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link" href="kelola_guru.php">
+                Data Guru
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link active" href="kelola_kelas.php">
+                Data Kelas
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link" href="kelola_tahun_ajaran.php">
+                Tahun Ajaran
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link" href="kelola_wali_kelas.php">
+                Wali Kelas
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link" href="penempatan_siswa.php">
+                Penempatan Siswa
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link" href="kelola_pelanggaran_kategori.php">
+                ⚠ Kategori Pelanggaran
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link" href="pelanggaran.php">
+                Data Pelanggaran
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link" href="tindakan.php">
+                Data Tindakan
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link" href="laporan.php">
+                Laporan
+            </a>
+        </li>
+
+        <li>
+            <a class="nav-link" href="about_me.php">
+                ℹ About Me
+            </a>
+        </li>
+
+    </ul>
+
+    <a href="logout.php" class="btn btn-danger w-100 mt-4 text-start">
+        🚪 Logout
     </a>
 
 </div>
 
 
-<div class="container">
+<!-- CONTENT -->
 
-    <div class="box">
+<div class="content p-4">
 
-        <h1>
-            Edit Data Kelas
-        </h1>
+    <!-- HEADER -->
 
-        <p class="deskripsi">
-            Ubah nama kelas yang terdaftar dalam sistem.
-        </p>
+    <div class="card mb-3">
 
+        <div class="card-body">
 
-        <?php if ($pesan != '') { ?>
+            <h1 class="h3 mb-1">
+                Data Kelas
+            </h1>
 
-            <div class="pesan">
-                <?= htmlspecialchars($pesan); ?>
-            </div>
+            <p class="text-muted mb-0">
+                Kelola data kelas dalam sistem.
+            </p>
 
-        <?php } ?>
+        </div>
 
-
-        <form method="POST">
-
-            <div class="form-group">
-
-                <label>
-                    Nama Kelas
-                </label>
-
-                <input
-                    type="text"
-                    name="nama_kelas"
-                    value="<?= htmlspecialchars($data['nama_kelas']); ?>"
-                    placeholder="Contoh: XII RPL 1"
-                    required
-                >
-
-            </div>
+    </div>
 
 
-            <button
-                type="submit"
-                name="simpan"
-                class="btn btn-simpan"
-            >
-                Simpan Perubahan
-            </button>
+    <!-- FORM EDIT -->
+
+    <div class="card">
+
+        <div class="card-body">
+
+            <h2 class="h5 mb-3">
+                Edit Data Kelas
+            </h2>
+
+            <p class="text-muted">
+                Ubah nama kelas yang terdaftar dalam sistem.
+            </p>
 
 
-            <a
-                href="kelas.php"
-                class="btn btn-batal"
-            >
-                Batal
-            </a>
+            <!-- PESAN ERROR -->
 
-        </form>
+            <?php if ($pesan != '') { ?>
+
+                <div class="alert alert-danger">
+                    <?= htmlspecialchars($pesan); ?>
+                </div>
+
+            <?php } ?>
+
+
+            <form method="POST">
+
+                <div class="row g-3">
+
+                    <div class="col-md-6">
+
+                        <label class="form-label fw-bold">
+                            Nama Kelas
+                        </label>
+
+                        <input
+                            type="text"
+                            name="nama_kelas"
+                            class="form-control"
+                            value="<?= htmlspecialchars($data['nama_kelas']); ?>"
+                            placeholder="Contoh: XII RPL 1"
+                            required
+                        >
+
+                    </div>
+
+                </div>
+
+
+                <div class="mt-3">
+
+                    <button
+                        type="submit"
+                        name="simpan"
+                        class="btn btn-secondary"
+                    >
+                        Simpan Perubahan
+                    </button>
+
+                    <a
+                        href="kelola_kelas.php"
+                        class="btn btn-outline-secondary"
+                    >
+                        Batal
+                    </a>
+
+                </div>
+
+            </form>
+
+        </div>
 
     </div>
 
 </div>
 
 </body>
-
 </html>
-```

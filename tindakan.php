@@ -1,65 +1,63 @@
 
 <?php
-
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 session_start();
-
 require_once "database.php";
-
-/* =========================
-   CEK LOGIN
-========================= */
 
 if (!isset($_SESSION['login'])) {
     header("Location: login.php");
     exit;
 }
 
-/* =========================
-   CEK ROLE
-========================= */
-
 $role = $_SESSION['role'] ?? '';
 
-if (!in_array($role, ['admin', 'guru', 'wali_kelas'])) {
+if (!in_array($role, ['admin', 'guru'])) {
     die("Akses ditolak.");
 }
+
+$error = "";
 
 /* =========================
    TAMBAH TINDAKAN
 ========================= */
 
 if (isset($_POST['simpan'])) {
-
     $pelanggaran_id = (int)($_POST['pelanggaran_id'] ?? 0);
-    $tanggal = mysqli_real_escape_string($koneksi, $_POST['tanggal'] ?? '');
-    $tindakan = mysqli_real_escape_string($koneksi, trim($_POST['tindakan'] ?? ''));
-    $catatan = mysqli_real_escape_string($koneksi, trim($_POST['catatan'] ?? ''));
-
+    $tanggal = trim($_POST['tanggal'] ?? '');
+    $tindakan = trim($_POST['tindakan'] ?? '');
+    $catatan = trim($_POST['catatan'] ?? '');
     $petugas_id = (int)($_SESSION['user_id'] ?? 0);
 
     if ($pelanggaran_id <= 0 || $tanggal == '' || $tindakan == '') {
-
         $error = "Semua data wajib diisi.";
-
     } else {
-
-        $query = mysqli_query(
+        $stmt = mysqli_prepare(
             $koneksi,
             "INSERT INTO tindakan
             (pelanggaran_id, tanggal, tindakan, petugas_id, catatan)
-            VALUES
-            ($pelanggaran_id, '$tanggal', '$tindakan', $petugas_id, '$catatan')"
+            VALUES (?, ?, ?, ?, ?)"
         );
 
-        if ($query) {
+        mysqli_stmt_bind_param(
+            $stmt,
+            "issis",
+            $pelanggaran_id,
+            $tanggal,
+            $tindakan,
+            $petugas_id,
+            $catatan
+        );
+
+        if (mysqli_stmt_execute($stmt)) {
             header("Location: tindakan.php");
             exit;
         } else {
-            $error = "Gagal menyimpan tindakan: " . mysqli_error($koneksi);
+            $error = "Gagal menyimpan tindakan: " . mysqli_stmt_error($stmt);
         }
+
+        mysqli_stmt_close($stmt);
     }
 }
 
@@ -68,7 +66,6 @@ if (isset($_POST['simpan'])) {
 ========================= */
 
 if (isset($_GET['hapus'])) {
-
     if ($role != 'admin') {
         die("Akses ditolak.");
     }
@@ -76,14 +73,24 @@ if (isset($_GET['hapus'])) {
     $id = (int)$_GET['hapus'];
 
     if ($id > 0) {
-        mysqli_query(
+        $stmt = mysqli_prepare(
             $koneksi,
-            "DELETE FROM tindakan WHERE id = $id"
+            "DELETE FROM tindakan WHERE id = ?"
         );
+
+        mysqli_stmt_bind_param($stmt, "i", $id);
+
+        if (!mysqli_stmt_execute($stmt)) {
+            $error = "Gagal menghapus tindakan: " . mysqli_stmt_error($stmt);
+        }
+
+        mysqli_stmt_close($stmt);
     }
 
-    header("Location: tindakan.php");
-    exit;
+    if ($error == '') {
+        header("Location: tindakan.php");
+        exit;
+    }
 }
 
 /* =========================
@@ -107,6 +114,53 @@ if (!$pelanggaran) {
 }
 
 /* =========================
+   PENCARIAN
+========================= */
+
+$cari = trim($_GET['cari'] ?? '');
+$cari_sql = mysqli_real_escape_string($koneksi, $cari);
+
+$where = "";
+
+if ($cari != '') {
+    $where = "WHERE
+        s.nama LIKE '%$cari_sql%'
+        OR jp.nama LIKE '%$cari_sql%'
+        OR u.nama LIKE '%$cari_sql%'
+        OR t.tindakan LIKE '%$cari_sql%'
+        OR t.catatan LIKE '%$cari_sql%'";
+}
+
+/* =========================
+   PAGINATION
+========================= */
+
+$jumlah_data = mysqli_query(
+    $koneksi,
+    "SELECT COUNT(*) AS total
+    FROM tindakan t
+    INNER JOIN pelanggaran p ON t.pelanggaran_id = p.id
+    INNER JOIN siswa s ON p.siswa_id = s.id
+    INNER JOIN jenis_pelanggaran jp ON p.jenis_id = jp.id
+    LEFT JOIN users u ON t.petugas_id = u.id
+    $where"
+);
+
+if (!$jumlah_data) {
+    die("Gagal menghitung data: " . mysqli_error($koneksi));
+}
+
+$total_data = mysqli_fetch_assoc($jumlah_data)['total'];
+
+$data_per_halaman = 5;
+$total_halaman = max(1, ceil($total_data / $data_per_halaman));
+
+$halaman = max(1, (int)($_GET['halaman'] ?? 1));
+$halaman = min($halaman, $total_halaman);
+
+$mulai = ($halaman - 1) * $data_per_halaman;
+
+/* =========================
    DATA TINDAKAN
 ========================= */
 
@@ -125,259 +179,180 @@ $data = mysqli_query(
     INNER JOIN siswa s ON p.siswa_id = s.id
     INNER JOIN jenis_pelanggaran jp ON p.jenis_id = jp.id
     LEFT JOIN users u ON t.petugas_id = u.id
-    ORDER BY t.id DESC"
+    $where
+    ORDER BY t.id DESC
+    LIMIT $mulai, $data_per_halaman"
 );
 
 if (!$data) {
     die("Gagal mengambil data tindakan: " . mysqli_error($koneksi));
 }
-
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Tindakan</title>
 
-<title>Data Tindakan</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-<style>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
 
-* {
-    box-sizing: border-box;
-}
+        body {
+            margin: 0;
+            background: #f4f6f8;
+            font-family: Arial, sans-serif;
+        }
 
-body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background: #f4f6f8;
-    color: #333;
-}
+        /* SIDEBAR TETAP DI KIRI */
 
-/* SIDEBAR */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 220px;
+            height: 100vh;
+            background: #687280;
+            padding: 20px 12px;
+            overflow-y: auto;
+            z-index: 1000;
+        }
 
-.sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    width: 220px;
-    height: 100vh;
-    background: #687280;
-    padding: 20px 12px;
-    overflow-y: auto;
-}
+        .sidebar-title {
+            color: white;
+            font-size: 19px;
+            font-weight: bold;
+            margin: 0 8px 25px;
+            line-height: 1.4;
+        }
 
-.sidebar-title {
-    color: white;
-    font-size: 19px;
-    font-weight: bold;
-    margin: 0 8px 25px;
-    line-height: 1.4;
-}
+        .sidebar a {
+            display: block;
+            padding: 11px 13px;
+            margin-bottom: 5px;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+        }
 
-.sidebar a {
-    display: block;
-    padding: 11px 13px;
-    margin-bottom: 5px;
-    color: white;
-    text-decoration: none;
-    border-radius: 5px;
-    font-size: 14px;
-}
+        .sidebar a:hover,
+        .sidebar a.active {
+            background: #4f5965;
+        }
 
-.sidebar a:hover,
-.sidebar a.active {
-    background: #4f5965;
-}
+        .sidebar .logout {
+            margin-top: 20px;
+            background: #b42323;
+        }
 
-.logout {
-    margin-top: 20px;
-    background: #b42323;
-}
+        /* CONTENT */
 
-/* CONTENT */
+        .content {
+            margin-left: 220px;
+            padding: 30px;
+            min-height: 100vh;
+        }
 
-.content {
-    margin-left: 220px;
-    padding: 30px;
-}
+        .header,
+        .box {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 7px;
+            padding: 22px;
+            margin-bottom: 20px;
+        }
 
-/* HEADER */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+        }
 
-.header {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 22px;
-    margin-bottom: 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
 
-.header h1 {
-    margin: 0;
-    font-size: 24px;
-}
+        .header p {
+            color: #777;
+            margin: 5px 0 0;
+        }
 
-.header p {
-    color: #777;
-    margin-bottom: 0;
-}
+        /* TOMBOL */
 
-/* BOX */
+        .btn-tambah,
+        .btn-edit {
+            background: #9dff00;
+            color: #222;
+            border: none;
+        }
 
-.box {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 22px;
-    margin-bottom: 20px;
-}
+        .btn-tambah:hover,
+        .btn-edit:hover {
+            background: #8be000;
+            color: #222;
+        }
 
-.box h2 {
-    margin-top: 0;
-}
+        .btn-hapus {
+            background: #b42323;
+            color: white;
+        }
 
-/* TOMBOL */
+        .btn-hapus:hover {
+            background: #941d1d;
+            color: white;
+        }
 
-.btn {
-    display: inline-block;
-    padding: 10px 16px;
-    border: none;
-    border-radius: 5px;
-    color: white;
-    text-decoration: none;
-    cursor: pointer;
-    font-size: 14px;
-}
+        /* TABLE */
 
-.btn-tambah {
-    background: #087f5b;
-}
+        .table th {
+            background: #687280;
+            color: white;
+            white-space: nowrap;
+        }
 
-.btn-tambah:hover {
-    background: #066b4d;
-}
+        .table td {
+            vertical-align: middle;
+        }
 
-.btn-simpan {
-    background: #687280;
-}
+        .form-label {
+            font-weight: bold;
+            font-size: 14px;
+        }
 
-.btn-batal {
-    background: #777;
-}
+        /* RESPONSIVE */
 
-.btn-hapus {
-    background: #b42323;
-}
+        @media(max-width: 700px) {
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 220px;
+                height: 100vh;
+            }
 
-.btn-hapus:hover {
-    background: #941d1d;
-}
+            .content {
+                margin-left: 220px;
+                padding: 15px;
+            }
 
-/* FORM */
+            .header {
+                display: block;
+            }
 
-.form-group {
-    margin-bottom: 16px;
-}
-
-label {
-    display: block;
-    margin-bottom: 6px;
-    font-size: 13px;
-    font-weight: bold;
-}
-
-select,
-input,
-textarea {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    background: white;
-    font-family: Arial, sans-serif;
-}
-
-textarea {
-    min-height: 90px;
-    resize: vertical;
-}
-
-.form-actions {
-    margin-top: 20px;
-}
-
-/* ERROR */
-
-.error {
-    background: #fee2e2;
-    color: #b91c1c;
-    border: 1px solid #fecaca;
-    padding: 10px;
-    margin-bottom: 15px;
-    border-radius: 5px;
-}
-
-/* TABLE */
-
-.table-container {
-    overflow-x: auto;
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-th {
-    background: #687280;
-    color: white;
-    padding: 11px;
-    text-align: left;
-    font-size: 13px;
-}
-
-td {
-    padding: 11px;
-    border-bottom: 1px solid #ddd;
-    font-size: 13px;
-}
-
-tr:hover {
-    background: #f7f7f7;
-}
-
-/* RESPONSIVE */
-
-@media(max-width:700px) {
-
-    .sidebar {
-        position: relative;
-        width: 100%;
-        height: auto;
-    }
-
-    .content {
-        margin-left: 0;
-        padding: 15px;
-    }
-
-    .header {
-        display: block;
-    }
-
-    .btn-tambah {
-        margin-top: 15px;
-    }
-}
-
-</style>
-
+            .header .btn {
+                margin-top: 15px;
+            }
+        }
+    </style>
 </head>
 
 <body>
@@ -393,201 +368,155 @@ tr:hover {
 
     <?php if ($role == 'admin') { ?>
 
-        <!-- MENU ADMIN -->
-
         <a href="dashboard.php">🏠 Dashboard</a>
-
         <a href="kelola_siswa.php">Data Siswa</a>
-
         <a href="kelola_guru.php">Data Guru</a>
-
         <a href="kelola_kelas.php">Data Kelas</a>
-
         <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
-
         <a href="kelola_wali_kelas.php">Wali Kelas</a>
-
         <a href="penempatan_siswa.php">Penempatan Siswa</a>
-
-        <a href="kelola_pelanggaran_kategori.php">
-            ⚠ Kategori Pelanggaran
-        </a>
-
+        <a href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a>
         <a href="pelanggaran.php">Data Pelanggaran</a>
-
         <a href="tindakan.php" class="active">Data Tindakan</a>
-
         <a href="laporan.php">Laporan</a>
-
         <a href="about_me.php">ℹ About Me</a>
 
     <?php } else { ?>
 
-        <!-- MENU GURU DAN WALI KELAS -->
-
         <a href="dashboard.php">🏠 Dashboard</a>
-
         <a href="catat_pelanggaran.php">Catat Pelanggaran</a>
-
         <a href="tindakan.php" class="active">Tindakan</a>
-
         <a href="riwayat.php">Riwayat</a>
-
         <a href="rekap_poin.php">Rekap Poin</a>
 
     <?php } ?>
 
-    <a href="logout.php" class="logout">
-        🚪 Logout
-    </a>
+    <a href="logout.php" class="logout">🚪 Logout</a>
 
 </div>
-
 
 <!-- CONTENT -->
 
 <div class="content">
 
     <div class="header">
-
         <div>
             <h1>Data Tindakan</h1>
-
-            <p>
-                Mengelola tindakan terhadap pelanggaran siswa.
-            </p>
+            <p>Mengelola tindakan terhadap pelanggaran siswa.</p>
         </div>
 
-        <?php if ($role == 'admin' || $role == 'guru') { ?>
-
-            <a href="tindakan.php?tambah=1"
-               class="btn btn-tambah">
-                + Tambah Tindakan
-            </a>
-
-        <?php } ?>
-
+        <a href="tindakan.php?tambah=1" class="btn btn-tambah">
+            + Tambah Tindakan
+        </a>
     </div>
 
-
-    <?php if (isset($error)) { ?>
-
-        <div class="error">
+    <?php if ($error != '') { ?>
+        <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
         </div>
-
     <?php } ?>
-
 
     <!-- FORM TAMBAH -->
 
     <?php if (isset($_GET['tambah']) && $_GET['tambah'] == '1') { ?>
 
-        <?php if ($role == 'admin' || $role == 'guru') { ?>
+        <div class="box">
+            <h5 class="mb-3">Tambah Tindakan</h5>
 
-            <div class="box">
+            <form method="POST">
 
-                <h2>Tambah Tindakan</h2>
+                <div class="mb-3">
+                    <label class="form-label">Pelanggaran Siswa</label>
 
-                <form method="POST">
+                    <select name="pelanggaran_id" class="form-select" required>
+                        <option value="">-- Pilih Pelanggaran --</option>
 
-                    <div class="form-group">
-
-                        <label>Pelanggaran Siswa</label>
-
-                        <select name="pelanggaran_id" required>
-
-                            <option value="">
-                                -- Pilih Pelanggaran --
+                        <?php while ($p = mysqli_fetch_assoc($pelanggaran)) { ?>
+                            <option value="<?= $p['id']; ?>">
+                                <?= htmlspecialchars($p['nama_siswa']); ?>
+                                -
+                                <?= htmlspecialchars($p['nama_pelanggaran']); ?>
                             </option>
+                        <?php } ?>
 
-                            <?php while ($p = mysqli_fetch_assoc($pelanggaran)) { ?>
+                    </select>
+                </div>
 
-                                <option value="<?= $p['id']; ?>">
-                                    <?= htmlspecialchars($p['nama_siswa']); ?>
-                                    -
-                                    <?= htmlspecialchars($p['nama_pelanggaran']); ?>
-                                </option>
+                <div class="mb-3">
+                    <label class="form-label">Tanggal Tindakan</label>
 
-                            <?php } ?>
+                    <input type="date"
+                           name="tanggal"
+                           class="form-control"
+                           value="<?= date('Y-m-d'); ?>"
+                           required>
+                </div>
 
-                        </select>
+                <div class="mb-3">
+                    <label class="form-label">Tindakan</label>
 
-                    </div>
+                    <textarea name="tindakan"
+                              class="form-control"
+                              rows="3"
+                              placeholder="Masukkan tindakan yang diberikan..."
+                              required></textarea>
+                </div>
 
-                    <div class="form-group">
+                <div class="mb-3">
+                    <label class="form-label">Catatan</label>
 
-                        <label>Tanggal Tindakan</label>
+                    <textarea name="catatan"
+                              class="form-control"
+                              rows="3"
+                              placeholder="Catatan tambahan (opsional)"></textarea>
+                </div>
 
-                        <input
-                            type="date"
-                            name="tanggal"
-                            value="<?= date('Y-m-d'); ?>"
-                            required
-                        >
+                <button type="submit" name="simpan" class="btn btn-tambah">
+                    Simpan Tindakan
+                </button>
 
-                    </div>
+                <a href="tindakan.php" class="btn btn-secondary">
+                    Batal
+                </a>
 
-                    <div class="form-group">
-
-                        <label>Tindakan</label>
-
-                        <textarea
-                            name="tindakan"
-                            placeholder="Masukkan tindakan yang diberikan..."
-                            required
-                        ></textarea>
-
-                    </div>
-
-                    <div class="form-group">
-
-                        <label>Catatan</label>
-
-                        <textarea
-                            name="catatan"
-                            placeholder="Catatan tambahan (opsional)"
-                        ></textarea>
-
-                    </div>
-
-                    <div class="form-actions">
-
-                        <button
-                            type="submit"
-                            name="simpan"
-                            class="btn btn-simpan"
-                        >
-                            Simpan Tindakan
-                        </button>
-
-                        <a href="tindakan.php" class="btn btn-batal">
-                            Batal
-                        </a>
-
-                    </div>
-
-                </form>
-
-            </div>
-
-        <?php } ?>
+            </form>
+        </div>
 
     <?php } ?>
-
 
     <!-- DAFTAR TINDAKAN -->
 
     <div class="box">
 
-        <h2>Daftar Tindakan Siswa</h2>
+        <h5 class="mb-3">Daftar Tindakan Siswa</h5>
 
-        <div class="table-container">
+        <form method="GET" class="row g-2 mb-3">
 
-            <table>
+            <div class="col-md-5">
+                <input type="text"
+                       name="cari"
+                       class="form-control"
+                       placeholder="Cari nama siswa, pelanggaran, petugas..."
+                       value="<?= htmlspecialchars($cari); ?>">
+            </div>
+
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">
+                    Cari
+                </button>
+
+                <a href="tindakan.php" class="btn btn-secondary">
+                    Reset
+                </a>
+            </div>
+
+        </form>
+
+        <div class="table-responsive">
+
+            <table class="table table-bordered table-striped">
 
                 <thead>
-
                     <tr>
                         <th>No</th>
                         <th>Nama Siswa</th>
@@ -601,27 +530,22 @@ tr:hover {
                             <th>Aksi</th>
                         <?php } ?>
                     </tr>
-
                 </thead>
 
                 <tbody>
 
                     <?php
-
-                    $no = 1;
+                    $no = $mulai + 1;
 
                     if (mysqli_num_rows($data) > 0) {
-
                         while ($row = mysqli_fetch_assoc($data)) {
-
                     ?>
 
                         <tr>
-
                             <td><?= $no++; ?></td>
 
                             <td>
-                                <b><?= htmlspecialchars($row['nama_siswa']); ?></b>
+                                <?= htmlspecialchars($row['nama_siswa']); ?>
                             </td>
 
                             <td>
@@ -645,43 +569,30 @@ tr:hover {
                             </td>
 
                             <?php if ($role == 'admin') { ?>
-
                                 <td>
-
-                                    <a
-                                        href="edit_tindakan.php?id=<?= $row['id']; ?>"
-                                        class="btn btn-simpan"
-                                    >
+                                    <a href="edit_tindakan.php?id=<?= $row['id']; ?>"
+                                       class="btn btn-sm btn-edit mb-1">
                                         Edit
                                     </a>
 
-                                    <a
-                                        href="tindakan.php?hapus=<?= $row['id']; ?>"
-                                        class="btn btn-hapus"
-                                        onclick="return confirm('Yakin ingin menghapus tindakan ini?')"
-                                    >
+                                    <a href="tindakan.php?hapus=<?= $row['id']; ?>"
+                                       class="btn btn-sm btn-hapus mb-1"
+                                       onclick="return confirm('Yakin ingin menghapus tindakan ini?')">
                                         Hapus
                                     </a>
-
                                 </td>
-
                             <?php } ?>
 
                         </tr>
 
                     <?php
-
                         }
-
                     } else {
-
                     ?>
 
                         <tr>
-                            <td
-                                colspan="<?= $role == 'admin' ? 8 : 7; ?>"
-                                style="text-align:center;padding:25px;"
-                            >
+                            <td colspan="<?= $role == 'admin' ? 8 : 7; ?>"
+                                class="text-center py-4">
                                 Belum ada data tindakan.
                             </td>
                         </tr>
@@ -693,6 +604,34 @@ tr:hover {
             </table>
 
         </div>
+
+        <!-- PAGINATION -->
+
+        <?php if ($total_halaman > 1) { ?>
+
+            <nav>
+                <ul class="pagination mb-0">
+
+                    <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+
+                        <li class="page-item <?= $halaman == $i ? 'active' : ''; ?>">
+                            <a class="page-link"
+                               href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>">
+                                <?= $i; ?>
+                            </a>
+                        </li>
+
+                    <?php } ?>
+
+                </ul>
+            </nav>
+
+        <?php } ?>
+
+        <small class="text-muted">
+            Menampilkan <?= mysqli_num_rows($data); ?>
+            dari <?= $total_data; ?> data tindakan.
+        </small>
 
     </div>
 

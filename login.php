@@ -1,3 +1,4 @@
+
 <?php
 
 session_start();
@@ -24,6 +25,10 @@ if (isset($_POST['login'])) {
              LIMIT 1"
         );
 
+        if (!$stmt) {
+            die("Error database: " . mysqli_error($koneksi));
+        }
+
         mysqli_stmt_bind_param($stmt, "s", $email);
         mysqli_stmt_execute($stmt);
 
@@ -41,7 +46,7 @@ if (isset($_POST['login'])) {
 
                 $pesan = "Akun tidak aktif.";
 
-            } elseif ($password !== $user['password']) {
+            } elseif (!password_verify($password, $user['password'])) {
 
                 $pesan = "Email atau password salah.";
 

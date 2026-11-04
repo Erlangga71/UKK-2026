@@ -1,6 +1,5 @@
-```php
-<?php
 
+<?php
 session_start();
 
 if (!isset($_SESSION['login'])) {
@@ -12,22 +11,12 @@ include "database.php";
 
 $role = $_SESSION['role'] ?? '';
 
-/* =========================
-   CEK ADMIN
-========================= */
-
 if ($role != 'admin') {
-    echo "Akses ditolak.";
-    exit;
+    die("Akses ditolak.");
 }
 
-
-/* =========================
-   FORM TAMBAH
-========================= */
-
+$error = "";
 $tampil_form = isset($_GET['tambah']);
-
 
 /* =========================
    TAMBAH KELAS
@@ -44,47 +33,45 @@ if (isset($_POST['simpan'])) {
 
     } else {
 
-        $nama_db = mysqli_real_escape_string(
+        $stmt = mysqli_prepare(
             $koneksi,
-            $nama_kelas
+            "SELECT id FROM kelas WHERE nama_kelas = ? LIMIT 1"
         );
 
-        /* CEK KELAS */
+        mysqli_stmt_bind_param($stmt, "s", $nama_kelas);
+        mysqli_stmt_execute($stmt);
 
-        $cek = mysqli_query(
-            $koneksi,
-            "SELECT id
-             FROM kelas
-             WHERE nama_kelas = '$nama_db'
-             LIMIT 1"
-        );
+        $cek = mysqli_stmt_get_result($stmt);
+        $ada = mysqli_num_rows($cek) > 0;
 
-        if (mysqli_num_rows($cek) > 0) {
+        mysqli_stmt_close($stmt);
+
+        if ($ada) {
 
             $error = "Nama kelas tersebut sudah ada.";
             $tampil_form = true;
 
         } else {
 
-            $query = mysqli_query(
+            $stmt = mysqli_prepare(
                 $koneksi,
-                "INSERT INTO kelas
-                (nama_kelas)
-                VALUES
-                ('$nama_db')"
+                "INSERT INTO kelas (nama_kelas) VALUES (?)"
             );
 
-            if ($query) {
+            mysqli_stmt_bind_param($stmt, "s", $nama_kelas);
+
+            if (mysqli_stmt_execute($stmt)) {
+
+                mysqli_stmt_close($stmt);
 
                 header("Location: kelola_kelas.php");
                 exit;
 
             } else {
 
-                $error = "Gagal menambahkan kelas: "
-                       . mysqli_error($koneksi);
-
+                $error = "Gagal menambahkan kelas: " . mysqli_error($koneksi);
                 $tampil_form = true;
+                mysqli_stmt_close($stmt);
             }
         }
     }
@@ -97,27 +84,58 @@ if (isset($_POST['simpan'])) {
 
 if (isset($_GET['hapus'])) {
 
-    $id = intval($_GET['hapus']);
+    $id = (int)$_GET['hapus'];
 
     if ($id > 0) {
 
-        mysqli_query(
+        // Cek apakah kelas masih digunakan
+        $stmt = mysqli_prepare(
             $koneksi,
-            "DELETE FROM kelas
-             WHERE id = $id"
+            "SELECT
+                (SELECT COUNT(*) FROM penempatan_siswa WHERE kelas_id = ?) +
+                (SELECT COUNT(*) FROM wali_kelas WHERE kelas_id = ?) AS total"
         );
-    }
 
-    header("Location: kelola_kelas.php");
-    exit;
+        mysqli_stmt_bind_param($stmt, "ii", $id, $id);
+        mysqli_stmt_execute($stmt);
+
+        $hasil = mysqli_stmt_get_result($stmt);
+        $jumlah = (int)mysqli_fetch_assoc($hasil)['total'];
+
+        mysqli_stmt_close($stmt);
+
+        if ($jumlah > 0) {
+
+            $error = "Kelas tidak bisa dihapus karena masih digunakan.";
+
+        } else {
+
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "DELETE FROM kelas WHERE id = ?"
+            );
+
+            mysqli_stmt_bind_param($stmt, "i", $id);
+
+            if (mysqli_stmt_execute($stmt)) {
+                mysqli_stmt_close($stmt);
+                header("Location: kelola_kelas.php");
+                exit;
+            } else {
+                $error = "Gagal menghapus kelas: " . mysqli_error($koneksi);
+                mysqli_stmt_close($stmt);
+            }
+        }
+    }
 }
 
 
 /* =========================
-   SEARCH
+   PENCARIAN
 ========================= */
 
 $search = trim($_GET['search'] ?? '');
+$cari = "%$search%";
 
 
 /* =========================
@@ -125,14 +143,7 @@ $search = trim($_GET['search'] ?? '');
 ========================= */
 
 $per_halaman = 5;
-
-$halaman = isset($_GET['halaman'])
-    ? (int)$_GET['halaman']
-    : 1;
-
-if ($halaman < 1) {
-    $halaman = 1;
-}
+$halaman = max(1, (int)($_GET['halaman'] ?? 1));
 
 
 /* =========================
@@ -141,49 +152,26 @@ if ($halaman < 1) {
 
 if ($search != '') {
 
-    $cari = "%$search%";
-
     $stmt = $koneksi->prepare(
         "SELECT COUNT(*) AS total
          FROM kelas
          WHERE nama_kelas LIKE ?"
     );
 
-    $stmt->bind_param(
-        "s",
-        $cari
-    );
-
-    $stmt->execute();
-
-    $hasil = $stmt
-        ->get_result()
-        ->fetch_assoc();
-
-    $total_data = (int)$hasil['total'];
+    $stmt->bind_param("s", $cari);
 
 } else {
 
-    $hasil = mysqli_query(
-        $koneksi,
-        "SELECT COUNT(*) AS total
-         FROM kelas"
+    $stmt = $koneksi->prepare(
+        "SELECT COUNT(*) AS total FROM kelas"
     );
-
-    $hasil_total = mysqli_fetch_assoc($hasil);
-
-    $total_data = (int)$hasil_total['total'];
 }
 
+$stmt->execute();
+$total_data = (int)$stmt->get_result()->fetch_assoc()['total'];
+$stmt->close();
 
-/* =========================
-   TOTAL HALAMAN
-========================= */
-
-$total_halaman = max(
-    1,
-    ceil($total_data / $per_halaman)
-);
+$total_halaman = max(1, (int)ceil($total_data / $per_halaman));
 
 if ($halaman > $total_halaman) {
     $halaman = $total_halaman;
@@ -198,402 +186,91 @@ $mulai = ($halaman - 1) * $per_halaman;
 
 if ($search != '') {
 
-    $cari = "%$search%";
-
     $stmt = $koneksi->prepare(
-        "SELECT
-            id,
-            nama_kelas
+        "SELECT id, nama_kelas
          FROM kelas
          WHERE nama_kelas LIKE ?
          ORDER BY nama_kelas ASC
          LIMIT ?, ?"
     );
 
-    $stmt->bind_param(
-        "sii",
-        $cari,
-        $mulai,
-        $per_halaman
-    );
-
-    $stmt->execute();
-
-    $data = $stmt->get_result();
+    $stmt->bind_param("sii", $cari, $mulai, $per_halaman);
 
 } else {
 
     $stmt = $koneksi->prepare(
-        "SELECT
-            id,
-            nama_kelas
+        "SELECT id, nama_kelas
          FROM kelas
          ORDER BY nama_kelas ASC
          LIMIT ?, ?"
     );
 
-    $stmt->bind_param(
-        "ii",
-        $mulai,
-        $per_halaman
-    );
-
-    $stmt->execute();
-
-    $data = $stmt->get_result();
+    $stmt->bind_param("ii", $mulai, $per_halaman);
 }
+
+$stmt->execute();
+$data = $stmt->get_result();
 
 ?>
 
 <!DOCTYPE html>
-
 <html lang="id">
 
 <head>
 
 <meta charset="UTF-8">
-
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>Data Kelas</title>
 
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
 <style>
 
-* {
-    box-sizing: border-box;
-}
-
 body {
-    margin: 0;
-    font-family: Arial, sans-serif;
     background: #f4f6f8;
-    color: #333;
 }
-
-
-/* =========================
-   SIDEBAR
-========================= */
 
 .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
     width: 220px;
-    height: 100vh;
     background: #687280;
-    padding: 20px 12px;
-    overflow-y: auto;
 }
 
-.sidebar-title {
+.sidebar .nav-link {
     color: white;
-    font-size: 19px;
-    font-weight: bold;
-    margin: 0 8px 25px;
-    line-height: 1.4;
-}
-
-.sidebar a {
-    display: block;
-    padding: 11px 13px;
-    margin-bottom: 5px;
-    color: white;
-    text-decoration: none;
-    border-radius: 5px;
     font-size: 14px;
 }
 
-.sidebar a:hover,
-.sidebar a.active {
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
     background: #4f5965;
 }
 
-.logout {
-    margin-top: 20px;
-    background: #b42323;
-}
-
-
-/* =========================
-   CONTENT
-========================= */
-
 .content {
     margin-left: 220px;
-    padding: 30px;
 }
 
-.header,
-.box {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 22px;
-    margin-bottom: 20px;
-}
-
-.header h1 {
-    margin: 0;
-    font-size: 24px;
-}
-
-.header p {
-    color: #777;
-}
-
-
-/* =========================
-   TOP DATA
-========================= */
-
-.top-data {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
-
-/* =========================
-   BUTTON
-========================= */
-
-.btn {
-    display: inline-block;
-    padding: 10px 15px;
-    border: none;
-    border-radius: 5px;
-    text-decoration: none;
-    cursor: pointer;
-    font-size: 14px;
-}
-
-.btn-tambah {
-    background: #087f5b;
-    color: white;
-}
-
-.btn-tambah:hover {
-    background: #066b4d;
-}
-
-.btn-simpan {
-    background: #687280;
-    color: white;
-}
-
-.btn-simpan:hover {
-    background: #56606d;
-}
-
-.btn-batal {
-    background: #777;
-    color: white;
-    margin-left: 5px;
-}
-
-.btn-batal:hover {
-    background: #555;
-}
-
-.btn-cari {
-    background: #176b80;
-    color: white;
-}
-
-.btn-reset {
-    background: #777;
-    color: white;
-}
-
-
-/* =========================
-   SEARCH
-========================= */
-
-.search-form {
-    display: flex;
-    gap: 7px;
-    flex-wrap: wrap;
-}
-
-.search-form input {
-    width: 280px;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-}
-
-
-/* =========================
-   FORM
-========================= */
-
-.form-group {
-    display: flex;
-    flex-direction: column;
-    max-width: 500px;
-}
-
-label {
-    margin-bottom: 6px;
-    font-size: 13px;
+.btn-stabilo {
+    background: #9dff00;
+    color: #1a3300;
     font-weight: bold;
+    border: none;
 }
 
-input {
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-family: Arial;
+.btn-stabilo:hover {
+    background: #86e000;
+    color: #1a3300;
 }
 
-.form-buttons {
-    margin-top: 5px;
-}
-
-
-/* =========================
-   ERROR
-========================= */
-
-.error {
-    background: #fee2e2;
-    color: #b91c1c;
-    border: 1px solid #fecaca;
-    padding: 10px;
-    margin-bottom: 15px;
-    border-radius: 5px;
-}
-
-
-/* =========================
-   TABLE
-========================= */
-
-.table-container {
-    overflow-x: auto;
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-th {
-    background: #687280;
-    color: white;
-    padding: 11px;
-    text-align: left;
-    font-size: 13px;
-}
-
-td {
-    padding: 11px;
-    border-bottom: 1px solid #ddd;
-    font-size: 13px;
-}
-
-tr:hover {
-    background: #f7f7f7;
-}
-
-
-/* =========================
-   AKSI
-========================= */
-
-.btn-edit,
-.btn-hapus {
-    color: white;
-    padding: 6px 10px;
-    text-decoration: none;
-    border-radius: 4px;
-    font-size: 12px;
-}
-
-.btn-edit {
-    background: #086177;
-}
-
-.btn-edit:hover {
-    background: #064d5f;
-}
-
-.btn-hapus {
-    background: #b42323;
-}
-
-.btn-hapus:hover {
-    background: #941d1d;
-}
-
-
-/* =========================
-   PAGINATION
-========================= */
-
-.pagination {
-    margin-top: 20px;
-    display: flex;
-    gap: 5px;
-    flex-wrap: wrap;
-}
-
-.pagination a {
-    padding: 8px 12px;
-    border: 1px solid #ccc;
-    background: white;
-    color: #333;
-    text-decoration: none;
-    border-radius: 4px;
-}
-
-.pagination a:hover,
-.pagination a.active {
-    background: #176b80;
-    color: white;
-}
-
-.info {
-    margin-top: 15px;
-    color: #666;
-    font-size: 13px;
-}
-
-
-/* =========================
-   MOBILE
-========================= */
-
-@media(max-width:700px) {
-
+@media (max-width: 700px) {
     .sidebar {
-        position: relative;
+        position: static !important;
         width: 100%;
-        height: auto;
+        height: auto !important;
     }
 
     .content {
         margin-left: 0;
-        padding: 15px;
-    }
-
-    .top-data {
-        display: block;
-    }
-
-    .search-form {
-        margin-top: 15px;
-    }
-
-    .search-form input {
-        width: 100%;
     }
 }
 
@@ -603,401 +280,328 @@ tr:hover {
 
 <body>
 
+<!-- SIDEBAR -->
 
-<!-- =========================
-     SIDEBAR
-========================= -->
+<div class="sidebar position-fixed top-0 start-0 vh-100 overflow-auto p-3">
 
-<div class="sidebar">
+    <h5 class="text-white fw-bold mb-4 px-2">
+        ⚖ Pelanggaran<br>Siswa
+    </h5>
 
-    <div class="sidebar-title">
-        ⚖ Pelanggaran<br>
-        Siswa
-    </div>
+    <ul class="nav flex-column gap-1">
 
-    <a href="dashboard.php">
-        🏠 Dashboard
-    </a>
+        <li><a class="nav-link" href="dashboard.php">🏠 Dashboard</a></li>
+        <li><a class="nav-link" href="kelola_siswa.php">Data Siswa</a></li>
+        <li><a class="nav-link" href="kelola_guru.php">Data Guru</a></li>
+        <li><a class="nav-link active" href="kelola_kelas.php">Data Kelas</a></li>
+        <li><a class="nav-link" href="kelola_tahun_ajaran.php">Tahun Ajaran</a></li>
+        <li><a class="nav-link" href="kelola_wali_kelas.php">Wali Kelas</a></li>
+        <li><a class="nav-link" href="penempatan_siswa.php">Penempatan Siswa</a></li>
+        <li><a class="nav-link" href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a></li>
+        <li><a class="nav-link" href="pelanggaran.php">Data Pelanggaran</a></li>
+        <li><a class="nav-link" href="tindakan.php">Data Tindakan</a></li>
+        <li><a class="nav-link" href="laporan.php">Laporan</a></li>
+        <li><a class="nav-link" href="about_me.php">ℹ About Me</a></li>
 
-    <a href="kelola_siswa.php">
-        Data Siswa
-    </a>
+    </ul>
 
-    <a href="kelola_guru.php">
-        Data Guru
-    </a>
-
-    <a href="kelola_kelas.php" class="active">
-        Data Kelas
-    </a>
-
-    <a href="kelola_tahun_ajaran.php">
-        Tahun Ajaran
-    </a>
-
-    <a href="kelola_wali_kelas.php">
-        Wali Kelas
-    </a>
-
-    <a href="penempatan_siswa.php">
-        Penempatan Siswa
-    </a>
-
-    <a href="kelola_pelanggaran_kategori.php">
-        ⚠ Kategori Pelanggaran
-    </a>
-
-    <a href="pelanggaran.php">
-        Data Pelanggaran
-    </a>
-
-    <a href="tindakan.php">
-        Data Tindakan
-    </a>
-
-    <a href="laporan.php">
-        Laporan
-    </a>
-
-    <a href="about_me.php">
-        ℹ About Me
-    </a>
-
-    <a href="logout.php" class="logout">
+    <a href="logout.php" class="btn btn-danger w-100 mt-4 text-start">
         🚪 Logout
     </a>
 
 </div>
 
 
-<!-- =========================
-     CONTENT
-========================= -->
+<!-- CONTENT -->
 
-<div class="content">
+<div class="content p-4">
 
+    <!-- HEADER -->
 
-    <div class="header">
+    <div class="card mb-3">
 
-        <h1>
-            Data Kelas
-        </h1>
+        <div class="card-body">
 
-        <p>
-            Kelola data kelas dalam sistem.
-        </p>
+            <h1 class="h3 mb-1">Data Kelas</h1>
+
+            <p class="text-muted mb-0">
+                Kelola data kelas dalam sistem.
+            </p>
+
+        </div>
 
     </div>
 
 
-    <?php if (isset($error)) { ?>
+    <!-- PESAN ERROR -->
 
-        <div class="error">
+    <?php if ($error != '') { ?>
+
+        <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
         </div>
 
     <?php } ?>
 
 
-    <!-- =========================
-         DAFTAR + TAMBAH
-    ========================= -->
-
-    <div class="box">
-
-        <div class="top-data">
-
-            <strong>
-                Daftar Kelas
-            </strong>
-
-            <a
-                href="kelola_kelas.php?tambah=1"
-                class="btn btn-tambah"
-            >
-                + Tambah Kelas
-            </a>
-
-        </div>
-
-
-        <!-- SEARCH -->
-
-        <form
-            method="GET"
-            class="search-form"
-        >
-
-            <input
-                type="text"
-                name="search"
-                placeholder="Cari nama kelas..."
-                value="<?= htmlspecialchars($search); ?>"
-            >
-
-            <button
-                type="submit"
-                class="btn btn-cari"
-            >
-                Cari
-            </button>
-
-
-            <?php if ($search != '') { ?>
-
-                <a
-                    href="kelola_kelas.php"
-                    class="btn btn-reset"
-                >
-                    Reset
-                </a>
-
-            <?php } ?>
-
-        </form>
-
-    </div>
-
-
-    <!-- =========================
-         FORM TAMBAH
-    ========================= -->
+    <!-- FORM TAMBAH -->
 
     <?php if ($tampil_form) { ?>
 
-        <div class="box">
+        <div class="card mb-3">
 
-            <h2>
-                Tambah Data Kelas
-            </h2>
+            <div class="card-body">
 
-            <form method="POST">
+                <h2 class="h5 mb-3">Tambah Data Kelas</h2>
 
-                <div class="form-group">
+                <form method="POST">
 
-                    <label>
-                        Nama Kelas
-                    </label>
+                    <div class="row g-3">
 
-                    <input
-                        type="text"
-                        name="nama_kelas"
-                        placeholder="Contoh: XII RPL 1"
-                        required
-                    >
+                        <div class="col-md-6">
 
-                </div>
+                            <label class="form-label fw-bold">
+                                Nama Kelas
+                            </label>
 
+                            <input
+                                type="text"
+                                name="nama_kelas"
+                                class="form-control"
+                                placeholder="Contoh: XII RPL 1"
+                                required
+                            >
 
-                <div class="form-buttons">
+                        </div>
 
-                    <button
-                        type="submit"
-                        name="simpan"
-                        class="btn btn-simpan"
-                    >
-                        Simpan Kelas
-                    </button>
+                    </div>
 
-                    <a
-                        href="kelola_kelas.php"
-                        class="btn btn-batal"
-                    >
-                        Batal
-                    </a>
+                    <div class="mt-3">
 
-                </div>
+                        <button type="submit" name="simpan" class="btn btn-secondary">
+                            Simpan Kelas
+                        </button>
 
-            </form>
+                        <a href="kelola_kelas.php" class="btn btn-outline-secondary">
+                            Batal
+                        </a>
+
+                    </div>
+
+                </form>
+
+            </div>
 
         </div>
 
     <?php } ?>
 
 
-    <!-- =========================
-         TABEL KELAS
-    ========================= -->
+    <!-- DAFTAR KELAS -->
 
-    <div class="box">
+    <div class="card">
 
-        <h2>
-            Daftar Kelas
-        </h2>
+        <div class="card-body">
 
-        <div class="table-container">
+            <div class="d-flex justify-content-between align-items-center mb-3">
 
-            <table>
+                <h2 class="h5 mb-0">Daftar Kelas</h2>
 
-                <thead>
+                <?php if (!$tampil_form) { ?>
 
-                    <tr>
-
-                        <th>No</th>
-
-                        <th>Nama Kelas</th>
-
-                        <th>Aksi</th>
-
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-
-                <?php
-
-                if ($data && $data->num_rows > 0) {
-
-                    $no = $mulai + 1;
-
-                    while ($row = $data->fetch_assoc()) {
-
-                ?>
-
-                    <tr>
-
-                        <td>
-                            <?= $no++; ?>
-                        </td>
-
-                        <td>
-                            <b>
-                                <?= htmlspecialchars(
-                                    $row['nama_kelas']
-                                ); ?>
-                            </b>
-                        </td>
-
-                        <td>
-
-                            <a
-                                class="btn-edit"
-                                href="edit_kelas.php?id=<?= (int)$row['id']; ?>"
-                            >
-                                Edit
-                            </a>
-
-                            <a
-                                class="btn-hapus"
-                                href="kelola_kelas.php?hapus=<?= (int)$row['id']; ?>"
-                                onclick="return confirm('Yakin ingin menghapus kelas ini?')"
-                            >
-                                Hapus
-                            </a>
-
-                        </td>
-
-                    </tr>
-
-                <?php
-
-                    }
-
-                } else {
-
-                ?>
-
-                    <tr>
-
-                        <td
-                            colspan="3"
-                            style="text-align:center;padding:25px;"
-                        >
-                            Belum ada data kelas.
-                        </td>
-
-                    </tr>
-
-                <?php } ?>
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-
-        <!-- INFO -->
-
-        <div class="info">
-
-            Menampilkan
-
-            <?= $total_data > 0 ? $mulai + 1 : 0; ?>
-
-            -
-
-            <?= min(
-                $mulai + $per_halaman,
-                $total_data
-            ); ?>
-
-            dari
-
-            <?= $total_data; ?>
-
-            data kelas.
-
-        </div>
-
-
-        <!-- PAGINATION -->
-
-        <?php if ($total_halaman > 1) { ?>
-
-            <div class="pagination">
-
-
-                <?php if ($halaman > 1) { ?>
-
-                    <a
-                        href="?halaman=<?= $halaman - 1; ?>&search=<?= urlencode($search); ?>"
-                    >
-                        &laquo;
+                    <a href="kelola_kelas.php?tambah=1" class="btn btn-sm btn-stabilo">
+                        + Tambah Kelas
                     </a>
 
                 <?php } ?>
-
-
-                <?php for (
-                    $i = 1;
-                    $i <= $total_halaman;
-                    $i++
-                ) { ?>
-
-                    <a
-                        href="?halaman=<?= $i; ?>&search=<?= urlencode($search); ?>"
-                        class="<?= $i == $halaman ? 'active' : ''; ?>"
-                    >
-                        <?= $i; ?>
-                    </a>
-
-                <?php } ?>
-
-
-                <?php if ($halaman < $total_halaman) { ?>
-
-                    <a
-                        href="?halaman=<?= $halaman + 1; ?>&search=<?= urlencode($search); ?>"
-                    >
-                        &raquo;
-                    </a>
-
-                <?php } ?>
-
 
             </div>
 
-        <?php } ?>
+
+            <!-- PENCARIAN -->
+
+            <form method="GET" class="row g-2 mb-3">
+
+                <div class="col-md-5">
+
+                    <input
+                        type="text"
+                        name="search"
+                        class="form-control"
+                        placeholder="Cari nama kelas..."
+                        value="<?= htmlspecialchars($search); ?>"
+                    >
+
+                </div>
+
+                <div class="col-auto">
+
+                    <button type="submit" class="btn btn-secondary">
+                        Cari
+                    </button>
+
+                    <?php if ($search != '') { ?>
+
+                        <a href="kelola_kelas.php" class="btn btn-outline-secondary">
+                            Reset
+                        </a>
+
+                    <?php } ?>
+
+                </div>
+
+            </form>
+
+
+            <!-- TABEL KELAS -->
+
+            <div class="table-responsive">
+
+                <table class="table table-hover align-middle">
+
+                    <thead class="table-secondary">
+
+                        <tr>
+                            <th>No</th>
+                            <th>Nama Kelas</th>
+                            <th>Aksi</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                    <?php if ($data && $data->num_rows > 0) { ?>
+
+                        <?php $no = $mulai + 1; ?>
+
+                        <?php while ($row = $data->fetch_assoc()) { ?>
+
+                            <tr>
+
+                                <td><?= $no++; ?></td>
+
+                                <td>
+                                    <b><?= htmlspecialchars($row['nama_kelas']); ?></b>
+                                </td>
+
+                                <td class="text-nowrap">
+
+                                    <a
+                                        class="btn btn-sm btn-stabilo"
+                                        href="edit_kelas.php?id=<?= (int)$row['id']; ?>"
+                                    >
+                                        Edit
+                                    </a>
+
+                                    <a
+                                        class="btn btn-sm btn-danger"
+                                        href="kelola_kelas.php?hapus=<?= (int)$row['id']; ?>"
+                                        onclick="return confirm('Yakin ingin menghapus kelas ini?')"
+                                    >
+                                        Hapus
+                                    </a>
+
+                                </td>
+
+                            </tr>
+
+                        <?php } ?>
+
+                    <?php } else { ?>
+
+                        <tr>
+
+                            <td colspan="3" class="text-center py-4">
+                                Belum ada data kelas.
+                            </td>
+
+                        </tr>
+
+                    <?php } ?>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+
+            <!-- INFORMASI DATA -->
+
+            <div class="text-muted small">
+
+                Menampilkan
+                <?= $total_data > 0 ? $mulai + 1 : 0; ?>
+                -
+                <?= min($mulai + $per_halaman, $total_data); ?>
+                dari
+                <?= $total_data; ?>
+                data kelas.
+
+            </div>
+
+
+            <!-- PAGINATION -->
+
+            <?php if ($total_halaman > 1) { ?>
+
+                <nav class="mt-3">
+
+                    <ul class="pagination mb-0">
+
+                        <?php if ($halaman > 1) { ?>
+
+                            <li class="page-item">
+
+                                <a class="page-link"
+                                   href="?halaman=<?= $halaman - 1; ?>&search=<?= urlencode($search); ?>">
+                                    &laquo;
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+
+                        <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+
+                            <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
+
+                                <a class="page-link"
+                                   href="?halaman=<?= $i; ?>&search=<?= urlencode($search); ?>">
+                                    <?= $i; ?>
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+
+                        <?php if ($halaman < $total_halaman) { ?>
+
+                            <li class="page-item">
+
+                                <a class="page-link"
+                                   href="?halaman=<?= $halaman + 1; ?>&search=<?= urlencode($search); ?>">
+                                    &raquo;
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+                    </ul>
+
+                </nav>
+
+            <?php } ?>
+
+        </div>
 
     </div>
-
 
 </div>
 
 </body>
-
 </html>
-```

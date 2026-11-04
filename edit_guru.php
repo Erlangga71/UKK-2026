@@ -1,8 +1,6 @@
 
 <?php
-
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+session_start();
 
 require_once "database.php";
 require_once "auth.php";
@@ -34,8 +32,6 @@ $stmt = mysqli_prepare(
         g.email,
         g.no_hp,
         u.id AS user_id,
-        u.email AS email_akun,
-        u.role,
         u.aktif
      FROM guru g
      LEFT JOIN users u
@@ -60,26 +56,39 @@ if (empty($guru['user_id'])) {
     die("Akun login guru tidak ditemukan. Periksa kecocokan email pada tabel guru dan users.");
 }
 
+/* Nilai awal form */
+$form = $guru;
+
 /* =========================
    PROSES UPDATE
 ========================= */
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    $nama = trim($_POST['nama'] ?? '');
-    $nip = trim($_POST['nip'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    $no_hp = trim($_POST['no_hp'] ?? '');
+    $nama     = trim($_POST['nama'] ?? '');
+    $nip      = trim($_POST['nip'] ?? '');
+    $email    = trim($_POST['email'] ?? '');
+    $no_hp    = trim($_POST['no_hp'] ?? '');
     $password = $_POST['password'] ?? '';
-    $aktif = isset($_POST['aktif']) ? (int)$_POST['aktif'] : 0;
+    $aktif    = isset($_POST['aktif']) ? (int)$_POST['aktif'] : 0;
+
+    $form['nama']  = $nama;
+    $form['nip']   = $nip;
+    $form['email'] = $email;
+    $form['no_hp'] = $no_hp;
+    $form['aktif'] = $aktif;
 
     if ($nama == '' || $email == '') {
 
-        $error = "Nama dan email wajib diisi.";
+        $error = "Nama dan Gmail wajib diisi.";
 
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
 
-        $error = "Format email tidak valid.";
+        $error = "Format Gmail tidak valid.";
+
+    } elseif ($nip != '' && (!ctype_digit($nip) || strlen($nip) > 18)) {
+
+        $error = "NIP hanya boleh angka dan maksimal 18 digit.";
 
     } elseif (!in_array($aktif, [0, 1], true)) {
 
@@ -88,9 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
 
         $user_id = (int)$guru['user_id'];
-        $email_lama = $guru['email'];
 
-        // CEK EMAIL DUPLIKAT
+        /* CEK EMAIL DUPLIKAT DI USERS */
         $stmt = mysqli_prepare(
             $koneksi,
             "SELECT id FROM users
@@ -112,139 +120,159 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email_ada = mysqli_num_rows($cek_email) > 0;
         mysqli_stmt_close($stmt);
 
-        if ($email_ada) {
+        /* CEK EMAIL DUPLIKAT DI GURU */
+        $stmt = mysqli_prepare(
+            $koneksi,
+            "SELECT id FROM guru
+             WHERE email = ? AND id != ?
+             LIMIT 1"
+        );
 
-            $error = "Email tersebut sudah digunakan akun lain.";
+        mysqli_stmt_bind_param(
+            $stmt,
+            "si",
+            $email,
+            $id
+        );
 
-        } else {
+        mysqli_stmt_execute($stmt);
+        $cek_guru = mysqli_stmt_get_result($stmt);
+        $email_guru_ada = mysqli_num_rows($cek_guru) > 0;
+        mysqli_stmt_close($stmt);
 
-            // CEK EMAIL DI DATA GURU
+        /* CEK NIP DUPLIKAT */
+        $nip_ada = false;
+
+        if ($nip != '') {
             $stmt = mysqli_prepare(
                 $koneksi,
                 "SELECT id FROM guru
-                 WHERE email = ? AND id != ?
+                 WHERE nip = ? AND id != ?
                  LIMIT 1"
             );
 
             mysqli_stmt_bind_param(
                 $stmt,
                 "si",
-                $email,
+                $nip,
                 $id
             );
 
             mysqli_stmt_execute($stmt);
-            $cek_guru = mysqli_stmt_get_result($stmt);
-            $email_guru_ada = mysqli_num_rows($cek_guru) > 0;
+            $cek_nip = mysqli_stmt_get_result($stmt);
+            $nip_ada = mysqli_num_rows($cek_nip) > 0;
             mysqli_stmt_close($stmt);
+        }
 
-            if ($email_guru_ada) {
+        if ($email_ada || $email_guru_ada) {
 
-                $error = "Email tersebut sudah digunakan guru lain.";
+            $error = "Gmail tersebut sudah digunakan.";
 
-            } else {
+        } elseif ($nip_ada) {
 
-                mysqli_begin_transaction($koneksi);
+            $error = "NIP tersebut sudah digunakan guru lain.";
 
-                try {
+        } else {
 
-                    $nip_db = ($nip === '') ? null : $nip;
-                    $no_hp_db = ($no_hp === '') ? null : $no_hp;
+            mysqli_begin_transaction($koneksi);
 
-                    // UPDATE DATA GURU
+            try {
+
+                $nip_db = ($nip == '') ? null : $nip;
+                $no_hp_db = ($no_hp == '') ? null : $no_hp;
+
+                /* UPDATE DATA GURU */
+                $stmt = mysqli_prepare(
+                    $koneksi,
+                    "UPDATE guru
+                     SET nama = ?, nip = ?, email = ?, no_hp = ?
+                     WHERE id = ?"
+                );
+
+                mysqli_stmt_bind_param(
+                    $stmt,
+                    "ssssi",
+                    $nama,
+                    $nip_db,
+                    $email,
+                    $no_hp_db,
+                    $id
+                );
+
+                if (!mysqli_stmt_execute($stmt)) {
+                    throw new Exception(mysqli_stmt_error($stmt));
+                }
+
+                mysqli_stmt_close($stmt);
+
+                /* UPDATE AKUN TANPA GANTI PASSWORD */
+                if ($password == '') {
+
                     $stmt = mysqli_prepare(
                         $koneksi,
-                        "UPDATE guru
-                         SET nama = ?, nip = ?, email = ?, no_hp = ?
-                         WHERE id = ?"
+                        "UPDATE users
+                         SET nama = ?, email = ?, username = ?, aktif = ?
+                         WHERE id = ? AND role = 'guru'"
                     );
 
                     mysqli_stmt_bind_param(
                         $stmt,
-                        "ssssi",
+                        "sssii",
                         $nama,
-                        $nip_db,
                         $email,
-                        $no_hp_db,
-                        $id
+                        $email,
+                        $aktif,
+                        $user_id
                     );
 
-                    if (!mysqli_stmt_execute($stmt)) {
-                        throw new Exception(mysqli_stmt_error($stmt));
-                    }
+                } else {
 
-                    mysqli_stmt_close($stmt);
+                    /* PASSWORD BARU DI-HASH */
+                    $password_hash = password_hash(
+                        $password,
+                        PASSWORD_DEFAULT
+                    );
 
-                    // UPDATE AKUN TANPA MENGGANTI PASSWORD
-                    if ($password === '') {
+                    $stmt = mysqli_prepare(
+                        $koneksi,
+                        "UPDATE users
+                         SET nama = ?, email = ?, username = ?,
+                             password = ?, aktif = ?
+                         WHERE id = ? AND role = 'guru'"
+                    );
 
-                        $stmt = mysqli_prepare(
-                            $koneksi,
-                            "UPDATE users
-                             SET nama = ?, email = ?, username = ?, aktif = ?
-                             WHERE id = ? AND role = 'guru'"
-                        );
-
-                        mysqli_stmt_bind_param(
-                            $stmt,
-                            "sssii",
-                            $nama,
-                            $email,
-                            $email,
-                            $aktif,
-                            $user_id
-                        );
-
-                    } else {
-
-                        // UPDATE AKUN SEKALIGUS PASSWORD
-                        $password_hash = password_hash(
-                            $password,
-                            PASSWORD_DEFAULT
-                        );
-
-                        $stmt = mysqli_prepare(
-                            $koneksi,
-                            "UPDATE users
-                             SET nama = ?, email = ?, username = ?,
-                                 password = ?, aktif = ?
-                             WHERE id = ? AND role = 'guru'"
-                        );
-
-                        mysqli_stmt_bind_param(
-                            $stmt,
-                            "ssssii",
-                            $nama,
-                            $email,
-                            $email,
-                            $password_hash,
-                            $aktif,
-                            $user_id
-                        );
-                    }
-
-                    if (!mysqli_stmt_execute($stmt)) {
-                        throw new Exception(mysqli_stmt_error($stmt));
-                    }
-
-                    mysqli_stmt_close($stmt);
-
-                    mysqli_commit($koneksi);
-
-                    header("Location: kelola_guru.php");
-                    exit;
-
-                } catch (Exception $e) {
-
-                    mysqli_rollback($koneksi);
-
-                    $error = "Gagal memperbarui data: " . $e->getMessage();
+                    mysqli_stmt_bind_param(
+                        $stmt,
+                        "ssssii",
+                        $nama,
+                        $email,
+                        $email,
+                        $password_hash,
+                        $aktif,
+                        $user_id
+                    );
                 }
+
+                if (!mysqli_stmt_execute($stmt)) {
+                    throw new Exception(mysqli_stmt_error($stmt));
+                }
+
+                mysqli_stmt_close($stmt);
+
+                mysqli_commit($koneksi);
+
+                header("Location: kelola_guru.php");
+                exit;
+
+            } catch (Exception $e) {
+
+                mysqli_rollback($koneksi);
+
+                $error = "Gagal memperbarui data: " . $e->getMessage();
             }
         }
     }
 }
-
 ?>
 
 <!DOCTYPE html>
@@ -255,71 +283,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Edit Guru</title>
+<title>Edit Data Guru</title>
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
 
 body {
-    margin: 0;
-    font-family: Arial, sans-serif;
     background: #f4f6f8;
-    color: #333;
-}
-
-.header {
-    background: #687280;
-    color: white;
-    padding: 18px 30px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-}
-
-.header h2 {
+    font-family: Arial, sans-serif;
+    font-size: 14px;
     margin: 0;
-    font-size: 20px;
 }
 
-.container-edit {
-    width: 90%;
-    max-width: 750px;
-    margin: 30px auto;
+/* SIDEBAR */
+.sidebar {
+    width: 220px;
+    background: #687280;
 }
 
-.box {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 25px;
+.sidebar .nav-link {
+    color: white;
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 4px;
 }
 
-.box h1 {
-    font-size: 23px;
-    margin-bottom: 8px;
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
+    background: #4f5965;
+    color: white;
 }
 
-.keterangan {
-    color: #777;
-    margin-bottom: 25px;
+/* CONTENT */
+.content {
+    margin-left: 220px;
 }
 
-@media(max-width: 600px) {
-    .header {
-        padding: 15px;
-        flex-direction: column;
-        align-items: flex-start;
+/* CARD */
+.card {
+    border: 1px solid #d8d8d8;
+    border-radius: 6px;
+}
+
+.card-body {
+    padding: 13px;
+}
+
+/* TOMBOL */
+.btn-stabilo {
+    background: #9dff00;
+    color: #1a3300;
+    font-weight: bold;
+    border: none;
+}
+
+.btn-stabilo:hover {
+    background: #86e000;
+    color: #1a3300;
+}
+
+/* RESPONSIVE */
+@media (max-width: 700px) {
+    .sidebar {
+        position: static !important;
+        width: 100%;
+        height: auto !important;
     }
 
-    .container-edit {
-        width: 95%;
-        margin: 15px auto;
-    }
-
-    .box {
-        padding: 18px;
+    .content {
+        margin-left: 0;
     }
 }
 
@@ -329,148 +362,176 @@ body {
 
 <body>
 
-<div class="header">
+<!-- SIDEBAR -->
+<div class="sidebar position-fixed top-0 start-0 vh-100 overflow-auto p-3">
 
-    <h2>⚖ SISTEM INFORMASI PELANGGARAN SISWA</h2>
+    <h5 class="text-white fw-bold mb-4 px-2">
+        ⚖ Pelanggaran<br>Siswa
+    </h5>
 
-    <a href="kelola_guru.php" class="btn btn-secondary btn-sm">
-        ← Kembali
+    <ul class="nav flex-column gap-1">
+
+        <li><a class="nav-link" href="dashboard.php">🏠 Dashboard</a></li>
+        <li><a class="nav-link" href="kelola_siswa.php">Data Siswa</a></li>
+        <li><a class="nav-link active" href="kelola_guru.php">Data Guru</a></li>
+        <li><a class="nav-link" href="kelola_kelas.php">Data Kelas</a></li>
+        <li><a class="nav-link" href="kelola_tahun_ajaran.php">Tahun Ajaran</a></li>
+        <li><a class="nav-link" href="kelola_wali_kelas.php">Wali Kelas</a></li>
+        <li><a class="nav-link" href="penempatan_siswa.php">Penempatan Siswa</a></li>
+        <li><a class="nav-link" href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a></li>
+        <li><a class="nav-link" href="pelanggaran.php">Data Pelanggaran</a></li>
+        <li><a class="nav-link" href="tindakan.php">Data Tindakan</a></li>
+        <li><a class="nav-link" href="laporan.php">Laporan</a></li>
+        <li><a class="nav-link" href="about_me.php">ℹ About Me</a></li>
+
+    </ul>
+
+    <a href="logout.php" class="btn btn-danger w-100 mt-4 text-start">
+        🚪 Logout
     </a>
 
 </div>
 
+<!-- CONTENT -->
+<div class="content p-4">
 
-<div class="container-edit">
+    <!-- HEADER -->
+    <div class="card mb-3">
+        <div class="card-body">
 
-    <div class="box">
+            <h1 class="h3 mb-1">Data Guru</h1>
 
-        <h1>Edit Data Guru</h1>
+            <p class="text-muted mb-0">
+                Kelola data guru dan akun login guru.
+            </p>
 
-        <p class="keterangan">
-            Perbarui informasi guru dan akun login.
-        </p>
+        </div>
+    </div>
 
-        <?php if ($error != '') { ?>
+    <!-- FORM EDIT -->
+    <div class="card mb-3">
 
-            <div class="alert alert-danger">
-                <?= htmlspecialchars($error); ?>
-            </div>
+        <div class="card-body">
 
-        <?php } ?>
+            <h2 class="h5 mb-3">Edit Data Guru</h2>
 
+            <?php if ($error != '') { ?>
 
-        <form method="POST">
+                <div class="alert alert-danger">
+                    <?= htmlspecialchars($error); ?>
+                </div>
 
-            <div class="mb-3">
+            <?php } ?>
 
-                <label class="form-label">Nama Guru</label>
+            <form method="POST">
 
-                <input
-                    type="text"
-                    name="nama"
-                    class="form-control"
-                    value="<?= htmlspecialchars($guru['nama']); ?>"
-                    required
-                >
+                <div class="row g-3">
 
-            </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">NIP</label>
 
+                        <input
+                            type="text"
+                            name="nip"
+                            class="form-control"
+                            placeholder="Masukkan NIP (maksimal 18 digit)"
+                            value="<?= htmlspecialchars($form['nip'] ?? ''); ?>"
+                            maxlength="18"
+                            inputmode="numeric"
+                            pattern="[0-9]{1,18}"
+                            title="NIP hanya boleh angka dan maksimal 18 digit."
+                            oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 18)"
+                        >
+                    </div>
 
-            <div class="mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Nama Guru</label>
 
-                <label class="form-label">NIP</label>
+                        <input
+                            type="text"
+                            name="nama"
+                            class="form-control"
+                            placeholder="Masukkan nama guru"
+                            value="<?= htmlspecialchars($form['nama'] ?? ''); ?>"
+                            required
+                        >
+                    </div>
 
-                <input
-                    type="text"
-                    name="nip"
-                    class="form-control"
-                    value="<?= htmlspecialchars($guru['nip'] ?? ''); ?>"
-                >
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Gmail</label>
 
-            </div>
+                        <input
+                            type="email"
+                            name="email"
+                            class="form-control"
+                            placeholder="contoh@gmail.com"
+                            value="<?= htmlspecialchars($form['email'] ?? ''); ?>"
+                            required
+                        >
+                    </div>
 
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Password Baru</label>
 
-            <div class="mb-3">
+                        <input
+                            type="password"
+                            name="password"
+                            class="form-control"
+                            placeholder="Kosongkan jika tidak ingin mengganti password"
+                        >
 
-                <label class="form-label">Gmail</label>
+                        <small class="text-muted">
+                            Password lama tetap digunakan jika dikosongkan.
+                        </small>
+                    </div>
 
-                <input
-                    type="email"
-                    name="email"
-                    class="form-control"
-                    value="<?= htmlspecialchars($guru['email'] ?? ''); ?>"
-                    required
-                >
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">No HP</label>
 
-            </div>
+                        <input
+                            type="text"
+                            name="no_hp"
+                            class="form-control"
+                            placeholder="Masukkan nomor HP"
+                            value="<?= htmlspecialchars($form['no_hp'] ?? ''); ?>"
+                        >
+                    </div>
 
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Status Akun</label>
 
-            <div class="mb-3">
+                        <select name="aktif" class="form-select">
 
-                <label class="form-label">No HP</label>
+                            <option value="1"
+                                <?= ((int)$form['aktif'] === 1) ? 'selected' : ''; ?>>
+                                Aktif
+                            </option>
 
-                <input
-                    type="text"
-                    name="no_hp"
-                    class="form-control"
-                    value="<?= htmlspecialchars($guru['no_hp'] ?? ''); ?>"
-                >
+                            <option value="0"
+                                <?= ((int)$form['aktif'] === 0) ? 'selected' : ''; ?>>
+                                Tidak Aktif
+                            </option>
 
-            </div>
+                        </select>
+                    </div>
 
+                </div>
 
-            <div class="mb-3">
+                <div class="mt-3">
 
-                <label class="form-label">Password Baru</label>
+                    <button type="submit" class="btn btn-secondary">
+                        Simpan Perubahan
+                    </button>
 
-                <input
-                    type="password"
-                    name="password"
-                    class="form-control"
-                    placeholder="Kosongkan jika tidak ingin mengganti password"
-                >
+                    <a href="kelola_guru.php" class="btn btn-outline-secondary">
+                        Batal
+                    </a>
 
-                <small class="text-muted">
-                    Password lama tetap digunakan jika bagian ini dikosongkan.
-                </small>
+                </div>
 
-            </div>
+            </form>
 
-
-            <div class="mb-4">
-
-                <label class="form-label">Status Akun</label>
-
-                <select name="aktif" class="form-select">
-
-                    <option
-                        value="1"
-                        <?= ((int)$guru['aktif'] === 1) ? 'selected' : ''; ?>
-                    >
-                        Aktif
-                    </option>
-
-                    <option
-                        value="0"
-                        <?= ((int)$guru['aktif'] === 0) ? 'selected' : ''; ?>
-                    >
-                        Tidak Aktif
-                    </option>
-
-                </select>
-
-            </div>
-
-
-            <button type="submit" class="btn btn-primary">
-                Simpan Perubahan
-            </button>
-
-            <a href="kelola_guru.php" class="btn btn-secondary">
-                Batal
-            </a>
-
-        </form>
+        </div>
 
     </div>
 

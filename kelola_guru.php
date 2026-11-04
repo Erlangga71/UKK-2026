@@ -35,32 +35,54 @@ if (isset($_POST['simpan'])) {
         $error = "Nama, Gmail dan password wajib diisi.";
         $tampil_form = true;
 
+    } elseif ($nip != '' && (!ctype_digit($nip) || strlen($nip) > 18)) {
+
+        $error = "NIP hanya boleh angka dan maksimal 18 digit.";
+        $tampil_form = true;
+
     } else {
 
-        // CEK EMAIL DI USERS
-        $stmt = mysqli_prepare(
-            $koneksi,
-            "SELECT id FROM users
-             WHERE email = ? OR username = ?
-             LIMIT 1"
-        );
+        // CEK NIP DUPLIKAT
+        $nip_ada = false;
 
-        mysqli_stmt_bind_param($stmt, "ss", $email, $email);
-        mysqli_stmt_execute($stmt);
+        if ($nip != '') {
 
-        $cek_user = mysqli_stmt_get_result($stmt);
-        $user_ada = mysqli_num_rows($cek_user) > 0;
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "SELECT id FROM guru WHERE nip = ? LIMIT 1"
+            );
 
-        mysqli_stmt_close($stmt);
+            mysqli_stmt_bind_param($stmt, "s", $nip);
+            mysqli_stmt_execute($stmt);
 
-        if ($user_ada) {
+            $cek_nip = mysqli_stmt_get_result($stmt);
+            $nip_ada = mysqli_num_rows($cek_nip) > 0;
 
-            $error = "Gmail tersebut sudah digunakan.";
+            mysqli_stmt_close($stmt);
+        }
+
+        if ($nip_ada) {
+
+            $error = "NIP tersebut sudah terdaftar.";
             $tampil_form = true;
 
         } else {
 
-            // CEK EMAIL DI GURU
+            // CEK EMAIL / USERNAME
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "SELECT id FROM users WHERE email = ? OR username = ? LIMIT 1"
+            );
+
+            mysqli_stmt_bind_param($stmt, "ss", $email, $email);
+            mysqli_stmt_execute($stmt);
+
+            $cek_user = mysqli_stmt_get_result($stmt);
+            $user_ada = mysqli_num_rows($cek_user) > 0;
+
+            mysqli_stmt_close($stmt);
+
+            // CEK EMAIL GURU
             $stmt = mysqli_prepare(
                 $koneksi,
                 "SELECT id FROM guru WHERE email = ? LIMIT 1"
@@ -74,23 +96,21 @@ if (isset($_POST['simpan'])) {
 
             mysqli_stmt_close($stmt);
 
-            if ($guru_ada) {
+            if ($user_ada || $guru_ada) {
 
-                $error = "Email guru tersebut sudah terdaftar.";
+                $error = "Gmail tersebut sudah digunakan.";
                 $tampil_form = true;
 
             } else {
 
-                $password_hash = password_hash(
-                    $password,
-                    PASSWORD_DEFAULT
-                );
+                // HASH PASSWORD
+                $password_hash = password_hash($password, PASSWORD_DEFAULT);
 
                 mysqli_begin_transaction($koneksi);
 
                 try {
 
-                    // BUAT AKUN LOGIN
+                    // MEMBUAT AKUN LOGIN GURU
                     $stmt_user = mysqli_prepare(
                         $koneksi,
                         "INSERT INTO users
@@ -113,7 +133,7 @@ if (isset($_POST['simpan'])) {
 
                     mysqli_stmt_close($stmt_user);
 
-                    // SIMPAN DATA GURU
+                    // MENYIMPAN DATA GURU
                     $nip_db = ($nip == '') ? null : $nip;
                     $no_hp_db = ($no_hp == '') ? null : $no_hp;
 
@@ -181,9 +201,6 @@ if (isset($_GET['hapus'])) {
 
         if ($guru_hapus) {
 
-            $email_hapus = $guru_hapus['email'];
-
-            // CEK DATA PELANGGARAN
             $stmt = mysqli_prepare(
                 $koneksi,
                 "SELECT COUNT(*) AS total
@@ -195,11 +212,11 @@ if (isset($_GET['hapus'])) {
             mysqli_stmt_execute($stmt);
 
             $hasil_cek = mysqli_stmt_get_result($stmt);
-            $jumlah_pelanggaran = (int)mysqli_fetch_assoc($hasil_cek)['total'];
+            $jumlah = (int)mysqli_fetch_assoc($hasil_cek)['total'];
 
             mysqli_stmt_close($stmt);
 
-            if ($jumlah_pelanggaran > 0) {
+            if ($jumlah > 0) {
 
                 $error = "Guru tidak bisa dihapus karena sudah memiliki data pelanggaran.";
 
@@ -209,7 +226,6 @@ if (isset($_GET['hapus'])) {
 
                 try {
 
-                    // HAPUS DATA GURU
                     $stmt = mysqli_prepare(
                         $koneksi,
                         "DELETE FROM guru WHERE id = ?"
@@ -223,14 +239,16 @@ if (isset($_GET['hapus'])) {
 
                     mysqli_stmt_close($stmt);
 
-                    // HAPUS AKUN LOGIN GURU
                     $stmt = mysqli_prepare(
                         $koneksi,
-                        "DELETE FROM users
-                         WHERE email = ? AND role = 'guru'"
+                        "DELETE FROM users WHERE email = ? AND role = 'guru'"
                     );
 
-                    mysqli_stmt_bind_param($stmt, "s", $email_hapus);
+                    mysqli_stmt_bind_param(
+                        $stmt,
+                        "s",
+                        $guru_hapus['email']
+                    );
 
                     if (!mysqli_stmt_execute($stmt)) {
                         throw new Exception(mysqli_error($koneksi));
@@ -269,13 +287,7 @@ $cari = "%$search%";
 
 $per_halaman = 5;
 
-$halaman = isset($_GET['halaman'])
-    ? (int)$_GET['halaman']
-    : 1;
-
-if ($halaman < 1) {
-    $halaman = 1;
-}
+$halaman = max(1, (int)($_GET['halaman'] ?? 1));
 
 
 /* =========================
@@ -293,13 +305,7 @@ if ($search != '') {
          OR no_hp LIKE ?"
     );
 
-    $stmt->bind_param(
-        "ssss",
-        $cari,
-        $cari,
-        $cari,
-        $cari
-    );
+    $stmt->bind_param("ssss", $cari, $cari, $cari, $cari);
 
 } else {
 
@@ -310,8 +316,7 @@ if ($search != '') {
 
 $stmt->execute();
 
-$hasil = $stmt->get_result()->fetch_assoc();
-$total_data = (int)$hasil['total'];
+$total_data = (int)$stmt->get_result()->fetch_assoc()['total'];
 
 $stmt->close();
 
@@ -360,11 +365,7 @@ if ($search != '') {
          LIMIT ?, ?"
     );
 
-    $stmt->bind_param(
-        "ii",
-        $mulai,
-        $per_halaman
-    );
+    $stmt->bind_param("ii", $mulai, $per_halaman);
 }
 
 $stmt->execute();
@@ -376,6 +377,7 @@ $data = $stmt->get_result();
 <html lang="id">
 
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -384,120 +386,54 @@ $data = $stmt->get_result();
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
-* {
-    box-sizing: border-box;
-}
 
 body {
-    margin: 0;
-    font-family: Arial, sans-serif;
     background: #f4f6f8;
-    color: #333;
 }
 
-/* SIDEBAR */
 .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
     width: 220px;
-    height: 100vh;
     background: #687280;
-    padding: 20px 12px;
-    overflow-y: auto;
 }
 
-.sidebar-title {
+.sidebar .nav-link {
     color: white;
-    font-size: 19px;
-    font-weight: bold;
-    margin: 0 8px 25px;
-    line-height: 1.4;
-}
-
-.sidebar a {
-    display: block;
-    padding: 11px 13px;
-    margin-bottom: 5px;
-    color: white;
-    text-decoration: none;
-    border-radius: 5px;
     font-size: 14px;
 }
 
-.sidebar a:hover,
-.sidebar a.active {
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
     background: #4f5965;
 }
 
-.sidebar .logout {
-    margin-top: 20px;
-    background: #b42323;
-}
-
-/* CONTENT */
 .content {
     margin-left: 220px;
-    padding: 30px;
 }
 
-.header-box,
-.content-box {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 22px;
-    margin-bottom: 20px;
-}
-
-.header-box h1 {
-    margin: 0;
-    font-size: 24px;
-}
-
-.header-box p {
-    color: #777;
-    margin: 8px 0 0;
-}
-
-.table thead th {
-    background: #687280;
-    color: white;
-    white-space: nowrap;
-}
-
-.nama-guru {
+.btn-stabilo {
+    background: #9dff00;
+    color: #1a3300;
     font-weight: bold;
+    border: none;
 }
 
-.nip-guru {
-    color: #777;
-    font-size: 12px;
-    margin-top: 4px;
+.btn-stabilo:hover {
+    background: #86e000;
+    color: #1a3300;
 }
 
-.pagination {
-    margin-top: 20px;
-}
-
-.info {
-    margin-top: 15px;
-    color: #666;
-    font-size: 13px;
-}
-
-@media(max-width: 700px) {
+@media (max-width: 700px) {
     .sidebar {
-        position: relative;
+        position: static !important;
         width: 100%;
-        height: auto;
+        height: auto !important;
     }
 
     .content {
         margin-left: 0;
-        padding: 15px;
     }
 }
+
 </style>
 
 </head>
@@ -505,330 +441,344 @@ body {
 <body>
 
 <!-- SIDEBAR -->
-<div class="sidebar">
 
-    <div class="sidebar-title">
-        ⚖ Pelanggaran<br>
-        Siswa
-    </div>
+<div class="sidebar position-fixed top-0 start-0 vh-100 overflow-auto p-3">
 
-    <a href="dashboard.php">🏠 Dashboard</a>
-    <a href="kelola_siswa.php">Data Siswa</a>
-    <a href="kelola_guru.php" class="active">Data Guru</a>
-    <a href="kelola_kelas.php">Data Kelas</a>
-    <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
-    <a href="kelola_wali_kelas.php">Wali Kelas</a>
-    <a href="penempatan_siswa.php">Penempatan Siswa</a>
-    <a href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a>
-    <a href="pelanggaran.php">Data Pelanggaran</a>
-    <a href="tindakan.php">Data Tindakan</a>
-    <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">ℹ About Me</a>
+    <h5 class="text-white fw-bold mb-4 px-2">
+        ⚖ Pelanggaran<br>Siswa
+    </h5>
 
-    <a href="logout.php" class="logout">🚪 Logout</a>
+    <ul class="nav flex-column gap-1">
+
+        <li><a class="nav-link" href="dashboard.php">🏠 Dashboard</a></li>
+        <li><a class="nav-link" href="kelola_siswa.php">Data Siswa</a></li>
+        <li><a class="nav-link active" href="kelola_guru.php">Data Guru</a></li>
+        <li><a class="nav-link" href="kelola_kelas.php">Data Kelas</a></li>
+        <li><a class="nav-link" href="kelola_tahun_ajaran.php">Tahun Ajaran</a></li>
+        <li><a class="nav-link" href="kelola_wali_kelas.php">Wali Kelas</a></li>
+        <li><a class="nav-link" href="penempatan_siswa.php">Penempatan Siswa</a></li>
+        <li><a class="nav-link" href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a></li>
+        <li><a class="nav-link" href="pelanggaran.php">Data Pelanggaran</a></li>
+        <li><a class="nav-link" href="tindakan.php">Data Tindakan</a></li>
+        <li><a class="nav-link" href="laporan.php">Laporan</a></li>
+        <li><a class="nav-link" href="about_me.php">ℹ About Me</a></li>
+
+    </ul>
+
+    <a href="logout.php" class="btn btn-danger w-100 mt-4 text-start">
+        🚪 Logout
+    </a>
 
 </div>
 
 
 <!-- CONTENT -->
-<div class="content">
 
-    <div class="header-box">
-        <h1>Data Guru</h1>
-        <p>Kelola data guru dan akun login guru.</p>
+<div class="content p-4">
+
+    <!-- HEADER -->
+
+    <div class="card mb-3">
+        <div class="card-body">
+
+            <h1 class="h3 mb-1">Data Guru</h1>
+
+            <p class="text-muted mb-0">
+                Kelola data guru dan akun login guru.
+            </p>
+
+        </div>
     </div>
 
+
+    <!-- PESAN ERROR -->
+
     <?php if ($error != '') { ?>
+
         <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
         </div>
+
+    <?php } ?>
+
+
+    <!-- FORM TAMBAH -->
+
+    <?php if ($tampil_form) { ?>
+
+        <div class="card mb-3">
+
+            <div class="card-body">
+
+                <h2 class="h5 mb-3">Tambah Data Guru</h2>
+
+                <form method="POST">
+
+                    <div class="row g-3">
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">NIP</label>
+                            <input type="text" name="nip" class="form-control"
+                                   placeholder="Masukkan NIP"
+                                   maxlength="18"
+                                   inputmode="numeric"
+                                   pattern="[0-9]{1,18}"
+                                   title="NIP hanya boleh angka dan maksimal 18 digit."
+                                   oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 18)">
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Nama Guru</label>
+                            <input type="text" name="nama" class="form-control"
+                                   placeholder="Masukkan nama guru" required>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Gmail</label>
+                            <input type="email" name="email" class="form-control"
+                                   placeholder="contoh@gmail.com" required>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Password Login</label>
+                            <input type="password" name="password" class="form-control"
+                                   placeholder="Masukkan password" required>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">No HP</label>
+                            <input type="text" name="no_hp" class="form-control"
+                                   placeholder="Masukkan nomor HP">
+                        </div>
+
+                    </div>
+
+                    <div class="mt-3">
+
+                        <button type="submit" name="simpan" class="btn btn-secondary">
+                            Simpan Guru
+                        </button>
+
+                        <a href="kelola_guru.php" class="btn btn-outline-secondary">
+                            Batal
+                        </a>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
     <?php } ?>
 
 
     <!-- DAFTAR GURU -->
-    <div class="content-box">
 
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div class="card">
 
-            <h5 class="mb-0">Daftar Guru</h5>
+        <div class="card-body">
 
-            <a href="kelola_guru.php?tambah=1" class="btn btn-success">
-                + Tambah Guru
-            </a>
+            <div class="d-flex justify-content-between align-items-center mb-3">
 
-        </div>
+                <h2 class="h5 mb-0">Daftar Guru</h2>
 
-        <form method="GET" class="row g-2 mb-3">
+                <?php if (!$tampil_form) { ?>
 
-            <div class="col-md-5">
-                <input
-                    type="text"
-                    name="search"
-                    class="form-control"
-                    placeholder="Cari NIP, nama, Gmail..."
-                    value="<?= htmlspecialchars($search); ?>"
-                >
-            </div>
-
-            <div class="col-auto">
-                <button type="submit" class="btn btn-primary">
-                    Cari
-                </button>
-
-                <?php if ($search != '') { ?>
-                    <a href="kelola_guru.php" class="btn btn-secondary">
-                        Reset
+                    <a href="kelola_guru.php?tambah=1" class="btn btn-sm btn-stabilo">
+                        + Tambah Guru
                     </a>
+
                 <?php } ?>
+
             </div>
 
-        </form>
 
-    </div>
+            <!-- PENCARIAN -->
 
+            <form method="GET" class="row g-2 mb-3">
 
-    <!-- FORM TAMBAH GURU -->
-    <?php if ($tampil_form) { ?>
+                <div class="col-md-5">
 
-        <div class="content-box">
-
-            <h5 class="mb-3">Tambah Data Guru</h5>
-
-            <form method="POST">
-
-                <div class="row g-3">
-
-                    <div class="col-md-6">
-                        <label class="form-label">NIP</label>
-                        <input
-                            type="text"
-                            name="nip"
-                            class="form-control"
-                            placeholder="Masukkan NIP"
-                        >
-                    </div>
-
-                    <div class="col-md-6">
-                        <label class="form-label">Nama Guru</label>
-                        <input
-                            type="text"
-                            name="nama"
-                            class="form-control"
-                            placeholder="Masukkan nama guru"
-                            required
-                        >
-                    </div>
-
-                    <div class="col-md-6">
-                        <label class="form-label">Gmail</label>
-                        <input
-                            type="email"
-                            name="email"
-                            class="form-control"
-                            placeholder="contoh@gmail.com"
-                            required
-                        >
-                    </div>
-
-                    <div class="col-md-6">
-                        <label class="form-label">Password Login</label>
-                        <input
-                            type="password"
-                            name="password"
-                            class="form-control"
-                            placeholder="Masukkan password"
-                            required
-                        >
-                    </div>
-
-                    <div class="col-md-6">
-                        <label class="form-label">No HP</label>
-                        <input
-                            type="text"
-                            name="no_hp"
-                            class="form-control"
-                            placeholder="Masukkan nomor HP"
-                        >
-                    </div>
+                    <input type="text" name="search" class="form-control"
+                           placeholder="Cari NIP, nama, Gmail..."
+                           value="<?= htmlspecialchars($search); ?>">
 
                 </div>
 
-                <div class="mt-4">
+                <div class="col-auto">
 
-                    <button
-                        type="submit"
-                        name="simpan"
-                        class="btn btn-primary"
-                    >
-                        Simpan Guru
+                    <button type="submit" class="btn btn-secondary">
+                        Cari
                     </button>
 
-                    <a href="kelola_guru.php" class="btn btn-secondary">
-                        Batal
-                    </a>
+                    <?php if ($search != '') { ?>
+
+                        <a href="kelola_guru.php" class="btn btn-outline-secondary">
+                            Reset
+                        </a>
+
+                    <?php } ?>
 
                 </div>
 
             </form>
 
-        </div>
 
-    <?php } ?>
+            <!-- TABEL GURU -->
 
+            <div class="table-responsive">
 
-    <!-- TABEL GURU -->
-    <div class="content-box">
+                <table class="table table-hover align-middle">
 
-        <h5 class="mb-3">Data Guru</h5>
-
-        <div class="table-responsive">
-
-            <table class="table table-bordered table-hover align-middle">
-
-                <thead>
-                    <tr>
-                        <th>No</th>
-                        <th>Nama Guru / NIP</th>
-                        <th>Gmail</th>
-                        <th>No HP</th>
-                        <th>Aksi</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-
-                <?php if ($data && $data->num_rows > 0) { ?>
-
-                    <?php $no = $mulai + 1; ?>
-
-                    <?php while ($row = $data->fetch_assoc()) { ?>
+                    <thead class="table-secondary">
 
                         <tr>
+                            <th>No</th>
+                            <th>Nama Guru / NIP</th>
+                            <th>Gmail</th>
+                            <th>No HP</th>
+                            <th>Aksi</th>
+                        </tr>
 
-                            <td><?= $no++; ?></td>
+                    </thead>
 
-                            <td>
-                                <div class="nama-guru">
-                                    <?= htmlspecialchars($row['nama']); ?>
-                                </div>
+                    <tbody>
 
-                                <div class="nip-guru">
-                                    NIP: <?= htmlspecialchars($row['nip'] ?? '-'); ?>
-                                </div>
+                    <?php if ($data && $data->num_rows > 0) { ?>
+
+                        <?php $no = $mulai + 1; ?>
+
+                        <?php while ($row = $data->fetch_assoc()) { ?>
+
+                            <tr>
+
+                                <td><?= $no++; ?></td>
+
+                                <td>
+                                    <b><?= htmlspecialchars($row['nama']); ?></b>
+
+                                    <div class="text-muted small">
+                                        NIP: <?= htmlspecialchars($row['nip'] ?? '-'); ?>
+                                    </div>
+                                </td>
+
+                                <td>
+                                    <?= htmlspecialchars($row['email'] ?? '-'); ?>
+                                </td>
+
+                                <td>
+                                    <?= htmlspecialchars($row['no_hp'] ?? '-'); ?>
+                                </td>
+
+                                <td>
+
+                                    <a class="btn btn-sm btn-stabilo"
+                                       href="edit_guru.php?id=<?= (int)$row['id']; ?>">
+                                        Edit
+                                    </a>
+
+                                    <a class="btn btn-sm btn-danger"
+                                       href="kelola_guru.php?hapus=<?= (int)$row['id']; ?>"
+                                       onclick="return confirm('Hapus guru dan akun login guru ini?')">
+                                        Hapus
+                                    </a>
+
+                                </td>
+
+                            </tr>
+
+                        <?php } ?>
+
+                    <?php } else { ?>
+
+                        <tr>
+                            <td colspan="5" class="text-center py-4">
+                                Belum ada data guru.
                             </td>
-
-                            <td>
-                                <?= htmlspecialchars($row['email'] ?? '-'); ?>
-                            </td>
-
-                            <td>
-                                <?= htmlspecialchars($row['no_hp'] ?? '-'); ?>
-                            </td>
-
-                            <td class="text-nowrap">
-
-                                <a
-                                    href="edit_guru.php?id=<?= (int)$row['id']; ?>"
-                                    class="btn btn-sm btn-primary"
-                                >
-                                    Edit
-                                </a>
-
-                                <a
-                                    href="kelola_guru.php?hapus=<?= (int)$row['id']; ?>"
-                                    class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Hapus guru dan akun login guru ini?')"
-                                >
-                                    Hapus
-                                </a>
-
-                            </td>
-
                         </tr>
 
                     <?php } ?>
 
-                <?php } else { ?>
+                    </tbody>
 
-                    <tr>
-                        <td colspan="5" class="text-center py-4">
-                            Belum ada data guru.
-                        </td>
-                    </tr>
+                </table>
 
-                <?php } ?>
+            </div>
 
-                </tbody>
 
-            </table>
+            <!-- INFORMASI DATA -->
+
+            <div class="text-muted small">
+
+                Menampilkan
+                <?= $total_data > 0 ? $mulai + 1 : 0; ?>
+                -
+                <?= min($mulai + $per_halaman, $total_data); ?>
+                dari
+                <?= $total_data; ?>
+                data guru.
+
+            </div>
+
+
+            <!-- PAGINATION -->
+
+            <?php if ($total_halaman > 1) { ?>
+
+                <nav class="mt-3">
+
+                    <ul class="pagination mb-0">
+
+                        <?php if ($halaman > 1) { ?>
+
+                            <li class="page-item">
+
+                                <a class="page-link"
+                                   href="?halaman=<?= $halaman - 1; ?>&search=<?= urlencode($search); ?>">
+                                    &laquo;
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+
+                        <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+
+                            <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
+
+                                <a class="page-link"
+                                   href="?halaman=<?= $i; ?>&search=<?= urlencode($search); ?>">
+                                    <?= $i; ?>
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+
+                        <?php if ($halaman < $total_halaman) { ?>
+
+                            <li class="page-item">
+
+                                <a class="page-link"
+                                   href="?halaman=<?= $halaman + 1; ?>&search=<?= urlencode($search); ?>">
+                                    &raquo;
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+                    </ul>
+
+                </nav>
+
+            <?php } ?>
 
         </div>
-
-
-        <div class="info">
-
-            Menampilkan
-            <?= $total_data > 0 ? $mulai + 1 : 0; ?>
-            -
-            <?= min($mulai + $per_halaman, $total_data); ?>
-            dari
-            <?= $total_data; ?>
-            data guru.
-
-        </div>
-
-
-        <!-- PAGINATION -->
-        <?php if ($total_halaman > 1) { ?>
-
-            <nav>
-                <ul class="pagination">
-
-                    <?php if ($halaman > 1) { ?>
-
-                        <li class="page-item">
-                            <a
-                                class="page-link"
-                                href="?halaman=<?= $halaman - 1; ?>&search=<?= urlencode($search); ?>"
-                            >
-                                &laquo;
-                            </a>
-                        </li>
-
-                    <?php } ?>
-
-                    <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
-
-                        <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
-
-                            <a
-                                class="page-link"
-                                href="?halaman=<?= $i; ?>&search=<?= urlencode($search); ?>"
-                            >
-                                <?= $i; ?>
-                            </a>
-
-                        </li>
-
-                    <?php } ?>
-
-                    <?php if ($halaman < $total_halaman) { ?>
-
-                        <li class="page-item">
-                            <a
-                                class="page-link"
-                                href="?halaman=<?= $halaman + 1; ?>&search=<?= urlencode($search); ?>"
-                            >
-                                &raquo;
-                            </a>
-                        </li>
-
-                    <?php } ?>
-
-                </ul>
-            </nav>
-
-        <?php } ?>
 
     </div>
 
