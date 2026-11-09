@@ -1,23 +1,28 @@
 
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 session_start();
+
 require_once "database.php";
+require_once "auth.php";
 
 // =========================
 // CEK LOGIN DAN ROLE
 // =========================
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
-}
-
-$role = $_SESSION['role'] ?? '';
-
-if ($role !== 'admin') {
-    die("Akses ditolak.");
-}
+hanyaRole(['admin']);
 
 $error = "";
+
+// =========================
+// TOKEN CSRF
+// =========================
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+$csrf_token = $_SESSION['csrf_token'];
 
 // =========================
 // CEK ID
@@ -42,6 +47,8 @@ mysqli_stmt_execute($stmt);
 
 $data = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
+mysqli_stmt_close($stmt);
+
 if (!$data) {
     die("Data tindakan tidak ditemukan.");
 }
@@ -49,59 +56,116 @@ if (!$data) {
 // =========================
 // PROSES UPDATE
 // =========================
-if (isset($_POST['simpan'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
 
-    $pelanggaran_id = (int)($_POST['pelanggaran_id'] ?? 0);
-    $tanggal = trim($_POST['tanggal'] ?? '');
-    $tindakan = trim($_POST['tindakan'] ?? '');
-    $catatan = trim($_POST['catatan'] ?? '');
+    $token = $_POST['csrf_token'] ?? '';
 
-    $petugas_id = ($_POST['petugas_id'] ?? '') === ''
-        ? null
-        : (int)$_POST['petugas_id'];
-
-    if ($pelanggaran_id <= 0 || $tanggal === '' || $tindakan === '') {
-        $error = "Pelanggaran, tanggal, dan tindakan wajib diisi.";
+    if (!hash_equals($csrf_token, $token)) {
+        $error = "Permintaan tidak valid. Silakan muat ulang halaman.";
     } else {
 
-        $stmt = mysqli_prepare(
-            $koneksi,
-            "UPDATE tindakan SET
-                pelanggaran_id = ?,
-                tanggal = ?,
-                tindakan = ?,
-                petugas_id = ?,
-                catatan = ?
-             WHERE id = ?"
-        );
+        $pelanggaran_id = (int)($_POST['pelanggaran_id'] ?? 0);
+        $tanggal = trim($_POST['tanggal'] ?? '');
+        $tindakan = trim($_POST['tindakan'] ?? '');
+        $catatan = trim($_POST['catatan'] ?? '');
 
-        mysqli_stmt_bind_param(
-            $stmt,
-            "issisi",
-            $pelanggaran_id,
-            $tanggal,
-            $tindakan,
-            $petugas_id,
-            $catatan,
-            $id
-        );
+        $petugas_id = ($_POST['petugas_id'] ?? '') === ''
+            ? null
+            : (int)$_POST['petugas_id'];
 
-        if (mysqli_stmt_execute($stmt)) {
-            header("Location: tindakan.php");
-            exit;
+        // Validasi input wajib
+        if ($pelanggaran_id <= 0 || $tanggal === '' || $tindakan === '') {
+            $error = "Pelanggaran, tanggal, dan tindakan wajib diisi.";
+        } elseif (
+            !DateTime::createFromFormat('!Y-m-d', $tanggal) ||
+            DateTime::createFromFormat('!Y-m-d', $tanggal)->format('Y-m-d') !== $tanggal
+        ) {
+            $error = "Format tanggal tidak valid.";
         } else {
-            $error = "Gagal menyimpan perubahan: " . mysqli_stmt_error($stmt);
+
+            // Pastikan pelanggaran tersedia
+            $cek_pelanggaran = mysqli_prepare(
+                $koneksi,
+                "SELECT id FROM pelanggaran WHERE id = ? LIMIT 1"
+            );
+
+            mysqli_stmt_bind_param($cek_pelanggaran, "i", $pelanggaran_id);
+            mysqli_stmt_execute($cek_pelanggaran);
+
+            $hasil_pelanggaran = mysqli_stmt_get_result($cek_pelanggaran);
+            $pelanggaran_ada = mysqli_num_rows($hasil_pelanggaran) > 0;
+
+            mysqli_stmt_close($cek_pelanggaran);
+
+            if (!$pelanggaran_ada) {
+                $error = "Data pelanggaran tidak ditemukan.";
+            }
+
+            // Pastikan petugas tersedia jika dipilih
+            if ($error === '' && $petugas_id !== null) {
+
+                $cek_petugas = mysqli_prepare(
+                    $koneksi,
+                    "SELECT id FROM users WHERE id = ? AND aktif = 1 LIMIT 1"
+                );
+
+                mysqli_stmt_bind_param($cek_petugas, "i", $petugas_id);
+                mysqli_stmt_execute($cek_petugas);
+
+                $hasil_petugas = mysqli_stmt_get_result($cek_petugas);
+                $petugas_ada = mysqli_num_rows($hasil_petugas) > 0;
+
+                mysqli_stmt_close($cek_petugas);
+
+                if (!$petugas_ada) {
+                    $error = "Petugas tidak ditemukan atau sudah tidak aktif.";
+                }
+            }
+
+            // Simpan perubahan
+            if ($error === '') {
+
+                $stmt = mysqli_prepare(
+                    $koneksi,
+                    "UPDATE tindakan SET
+                        pelanggaran_id = ?,
+                        tanggal = ?,
+                        tindakan = ?,
+                        petugas_id = ?,
+                        catatan = ?
+                     WHERE id = ?"
+                );
+
+                mysqli_stmt_bind_param(
+                    $stmt,
+                    "issisi",
+                    $pelanggaran_id,
+                    $tanggal,
+                    $tindakan,
+                    $petugas_id,
+                    $catatan,
+                    $id
+                );
+
+                if (mysqli_stmt_execute($stmt)) {
+                    mysqli_stmt_close($stmt);
+
+                    header("Location: tindakan.php?berhasil=edit");
+                    exit;
+                } else {
+                    $error = "Gagal menyimpan perubahan: " . mysqli_stmt_error($stmt);
+                    mysqli_stmt_close($stmt);
+                }
+            }
         }
 
-        mysqli_stmt_close($stmt);
+        // Pertahankan input jika terjadi kesalahan
+        $data['pelanggaran_id'] = $pelanggaran_id;
+        $data['tanggal'] = $tanggal;
+        $data['tindakan'] = $tindakan;
+        $data['petugas_id'] = $petugas_id;
+        $data['catatan'] = $catatan;
     }
-
-    // Pertahankan input terakhir jika terjadi kesalahan
-    $data['pelanggaran_id'] = $pelanggaran_id;
-    $data['tanggal'] = $tanggal;
-    $data['tindakan'] = $tindakan;
-    $data['petugas_id'] = $petugas_id;
-    $data['catatan'] = $catatan;
 }
 
 // =========================
@@ -126,16 +190,26 @@ if (!$query_pelanggaran) {
 // =========================
 // DATA PETUGAS
 // =========================
-$query_petugas = mysqli_query(
+$query_petugas = mysqli_prepare(
     $koneksi,
-    "SELECT id, nama, username
+    "SELECT id, nama, email
      FROM users
-     WHERE aktif = 1
+     WHERE aktif = 1 OR id = ?
      ORDER BY nama ASC"
 );
 
-if (!$query_petugas) {
-    die("Gagal mengambil data petugas: " . mysqli_error($koneksi));
+mysqli_stmt_bind_param(
+    $query_petugas,
+    "i",
+    $data['petugas_id']
+);
+
+mysqli_stmt_execute($query_petugas);
+
+$result_petugas = mysqli_stmt_get_result($query_petugas);
+
+if (!$result_petugas) {
+    die("Gagal mengambil data petugas.");
 }
 ?>
 
@@ -145,7 +219,7 @@ if (!$query_petugas) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Edit Tindakan</title>
+    <title>Edit Data Tindakan</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -256,8 +330,12 @@ if (!$query_petugas) {
 
 <body>
 
+<!-- SIDEBAR ADMIN -->
 <div class="sidebar">
-    <div class="sidebar-title">⚖ Pelanggaran<br>Siswa</div>
+
+    <div class="sidebar-title">
+        ⚖ Pelanggaran<br>Siswa
+    </div>
 
     <a href="dashboard.php">🏠 Dashboard</a>
     <a href="kelola_siswa.php">Data Siswa</a>
@@ -272,15 +350,15 @@ if (!$query_petugas) {
     <a href="laporan.php">Laporan</a>
     <a href="about_me.php">ℹ About Me</a>
     <a href="logout.php" class="logout">🚪 Logout</a>
+
 </div>
 
+<!-- KONTEN -->
 <div class="content">
 
     <div class="header">
-        <div>
-            <h1>Edit Data Tindakan</h1>
-            <p>Perbarui tindakan terhadap pelanggaran siswa.</p>
-        </div>
+        <h1>Edit Data Tindakan</h1>
+        <p>Perbarui tindakan terhadap pelanggaran siswa.</p>
     </div>
 
     <div class="box">
@@ -293,6 +371,12 @@ if (!$query_petugas) {
 
         <form method="POST">
 
+            <input
+                type="hidden"
+                name="csrf_token"
+                value="<?= htmlspecialchars($csrf_token); ?>"
+            >
+
             <div class="mb-3">
                 <label class="form-label">Pelanggaran Siswa</label>
 
@@ -301,7 +385,7 @@ if (!$query_petugas) {
 
                     <?php while ($pel = mysqli_fetch_assoc($query_pelanggaran)): ?>
                         <option
-                            value="<?= $pel['id']; ?>"
+                            value="<?= (int)$pel['id']; ?>"
                             <?= (int)$pel['id'] === (int)$data['pelanggaran_id'] ? 'selected' : ''; ?>
                         >
                             <?= htmlspecialchars($pel['nama_siswa']); ?>
@@ -309,6 +393,7 @@ if (!$query_petugas) {
                             <?= htmlspecialchars($pel['jenis_pelanggaran']); ?>
                         </option>
                     <?php endwhile; ?>
+
                 </select>
             </div>
 
@@ -342,15 +427,17 @@ if (!$query_petugas) {
                 <select name="petugas_id" class="form-select">
                     <option value="">-- Tidak Dipilih --</option>
 
-                    <?php while ($petugas = mysqli_fetch_assoc($query_petugas)): ?>
+                    <?php while ($petugas = mysqli_fetch_assoc($result_petugas)): ?>
                         <option
-                            value="<?= $petugas['id']; ?>"
+                            value="<?= (int)$petugas['id']; ?>"
                             <?= (string)$petugas['id'] === (string)$data['petugas_id'] ? 'selected' : ''; ?>
                         >
                             <?= htmlspecialchars($petugas['nama']); ?>
-                            - <?= htmlspecialchars($petugas['username']); ?>
+                            -
+                            <?= htmlspecialchars($petugas['email'] ?? '-'); ?>
                         </option>
                     <?php endwhile; ?>
+
                 </select>
             </div>
 
@@ -365,7 +452,11 @@ if (!$query_petugas) {
                 ><?= htmlspecialchars($data['catatan'] ?? ''); ?></textarea>
             </div>
 
-            <button type="submit" name="simpan" class="btn btn-simpan">
+            <button
+                type="submit"
+                name="simpan"
+                class="btn btn-simpan"
+            >
                 Simpan Perubahan
             </button>
 
@@ -376,7 +467,10 @@ if (!$query_petugas) {
         </form>
 
     </div>
+
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 </body>
 </html>

@@ -1,55 +1,53 @@
 
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 session_start();
+
 require_once "database.php";
+require_once "auth.php";
 
-// =========================
-// CEK LOGIN DAN ROLE
-// =========================
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
-}
-
-if (($_SESSION['role'] ?? '') !== 'admin') {
-    die("Akses ditolak.");
-}
+hanyaRole(['admin']);
 
 $error = "";
 
-// =========================
-// AMBIL ID PELANGGARAN
-// =========================
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 $id = (int)($_GET['id'] ?? 0);
 
 if ($id <= 0) {
     die("ID pelanggaran tidak valid.");
 }
 
-// =========================
-// AMBIL DATA PELANGGARAN
-// =========================
+// Ambil data pelanggaran
 $stmt = mysqli_prepare(
     $koneksi,
     "SELECT * FROM pelanggaran WHERE id = ? LIMIT 1"
 );
-
 mysqli_stmt_bind_param($stmt, "i", $id);
 mysqli_stmt_execute($stmt);
-
 $data = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
 if (!$data) {
     die("Data pelanggaran tidak ditemukan.");
 }
 
-// =========================
-// PROSES UPDATE
-// =========================
+// Proses update
 if (isset($_POST['update'])) {
+
+    if (!hash_equals(
+        $_SESSION['csrf_token'],
+        $_POST['csrf_token'] ?? ''
+    )) {
+        die("Permintaan tidak valid. Silakan kembali dan coba lagi.");
+    }
 
     $siswa_id = (int)($_POST['siswa_id'] ?? 0);
     $jenis_id = (int)($_POST['jenis_id'] ?? 0);
+
     $guru_id = ($_POST['guru_id'] ?? '') === ''
         ? null
         : (int)$_POST['guru_id'];
@@ -58,7 +56,11 @@ if (isset($_POST['update'])) {
     $keterangan = trim($_POST['keterangan'] ?? '');
     $status = $_POST['status'] ?? '';
 
-    $status_valid = ['tercatat', 'ditindaklanjuti', 'selesai'];
+    $status_valid = [
+        'tercatat',
+        'ditindaklanjuti',
+        'selesai'
+    ];
 
     if ($siswa_id <= 0 || $jenis_id <= 0 || $tanggal === '') {
         $error = "Nama siswa, jenis pelanggaran, dan tanggal wajib diisi.";
@@ -66,39 +68,81 @@ if (isset($_POST['update'])) {
         $error = "Status pelanggaran tidak valid.";
     } else {
 
-        $stmt = mysqli_prepare(
+        // Pastikan siswa tersedia
+        $cek = mysqli_prepare(
             $koneksi,
-            "UPDATE pelanggaran SET
-                siswa_id = ?,
-                jenis_id = ?,
-                guru_id = ?,
-                tanggal = ?,
-                keterangan = ?,
-                status = ?
-             WHERE id = ?"
+            "SELECT id FROM siswa WHERE id = ? LIMIT 1"
         );
+        mysqli_stmt_bind_param($cek, "i", $siswa_id);
+        mysqli_stmt_execute($cek);
 
-        mysqli_stmt_bind_param(
-            $stmt,
-            "iiisssi",
-            $siswa_id,
-            $jenis_id,
-            $guru_id,
-            $tanggal,
-            $keterangan,
-            $status,
-            $id
-        );
+        if (!mysqli_fetch_assoc(mysqli_stmt_get_result($cek))) {
+            $error = "Data siswa tidak ditemukan.";
+        }
 
-        if (mysqli_stmt_execute($stmt)) {
-            header("Location: pelanggaran.php");
-            exit;
-        } else {
-            $error = "Gagal memperbarui data: " . mysqli_error($koneksi);
+        // Pastikan jenis pelanggaran tersedia
+        if ($error === '') {
+            $cek = mysqli_prepare(
+                $koneksi,
+                "SELECT id FROM jenis_pelanggaran WHERE id = ? LIMIT 1"
+            );
+            mysqli_stmt_bind_param($cek, "i", $jenis_id);
+            mysqli_stmt_execute($cek);
+
+            if (!mysqli_fetch_assoc(mysqli_stmt_get_result($cek))) {
+                $error = "Jenis pelanggaran tidak ditemukan.";
+            }
+        }
+
+        // Pastikan guru tersedia jika dipilih
+        if ($error === '' && $guru_id !== null) {
+            $cek = mysqli_prepare(
+                $koneksi,
+                "SELECT id FROM guru WHERE id = ? LIMIT 1"
+            );
+            mysqli_stmt_bind_param($cek, "i", $guru_id);
+            mysqli_stmt_execute($cek);
+
+            if (!mysqli_fetch_assoc(mysqli_stmt_get_result($cek))) {
+                $error = "Data guru tidak ditemukan.";
+            }
+        }
+
+        if ($error === '') {
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "UPDATE pelanggaran SET
+                    siswa_id = ?,
+                    jenis_id = ?,
+                    guru_id = ?,
+                    tanggal = ?,
+                    keterangan = ?,
+                    status = ?
+                 WHERE id = ?"
+            );
+
+            mysqli_stmt_bind_param(
+                $stmt,
+                "iiisssi",
+                $siswa_id,
+                $jenis_id,
+                $guru_id,
+                $tanggal,
+                $keterangan,
+                $status,
+                $id
+            );
+
+            if (mysqli_stmt_execute($stmt)) {
+                header("Location: pelanggaran.php?berhasil=1");
+                exit;
+            } else {
+                $error = "Gagal memperbarui data pelanggaran.";
+            }
         }
     }
 
-    // Perbarui tampilan form dengan input terakhir
+    // Tampilkan kembali input terakhir
     $data['siswa_id'] = $siswa_id;
     $data['jenis_id'] = $jenis_id;
     $data['guru_id'] = $guru_id;
@@ -107,9 +151,7 @@ if (isset($_POST['update'])) {
     $data['status'] = $status;
 }
 
-// =========================
-// AMBIL DATA PILIHAN
-// =========================
+// Ambil data pilihan
 $siswa = mysqli_query(
     $koneksi,
     "SELECT id, nama, nis FROM siswa ORDER BY nama ASC"
@@ -131,8 +173,7 @@ $guru = mysqli_query(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Edit Pelanggaran</title>
+    <title>Edit Data Pelanggaran</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -258,10 +299,8 @@ $guru = mysqli_query(
 <div class="content">
 
     <div class="header">
-        <div>
-            <h1>Edit Data Pelanggaran</h1>
-            <p>Perbarui informasi pelanggaran siswa.</p>
-        </div>
+        <h1>Edit Data Pelanggaran</h1>
+        <p>Perbarui informasi pelanggaran siswa.</p>
     </div>
 
     <div class="box">
@@ -274,16 +313,17 @@ $guru = mysqli_query(
 
         <form method="POST">
 
+            <input type="hidden" name="csrf_token"
+                   value="<?= htmlspecialchars($_SESSION['csrf_token']); ?>">
+
             <div class="mb-3">
                 <label class="form-label">Nama Siswa</label>
                 <select name="siswa_id" class="form-select" required>
                     <option value="">-- Pilih Siswa --</option>
 
                     <?php while ($item = mysqli_fetch_assoc($siswa)): ?>
-                        <option
-                            value="<?= $item['id']; ?>"
-                            <?= (int)$item['id'] === (int)$data['siswa_id'] ? 'selected' : ''; ?>
-                        >
+                        <option value="<?= $item['id']; ?>"
+                            <?= (int)$item['id'] === (int)$data['siswa_id'] ? 'selected' : ''; ?>>
                             <?= htmlspecialchars($item['nama']); ?>
                             - NIS <?= htmlspecialchars($item['nis']); ?>
                         </option>
@@ -297,10 +337,8 @@ $guru = mysqli_query(
                     <option value="">-- Pilih Jenis Pelanggaran --</option>
 
                     <?php while ($item = mysqli_fetch_assoc($jenis)): ?>
-                        <option
-                            value="<?= $item['id']; ?>"
-                            <?= (int)$item['id'] === (int)$data['jenis_id'] ? 'selected' : ''; ?>
-                        >
+                        <option value="<?= $item['id']; ?>"
+                            <?= (int)$item['id'] === (int)$data['jenis_id'] ? 'selected' : ''; ?>>
                             <?= htmlspecialchars($item['nama']); ?>
                         </option>
                     <?php endwhile; ?>
@@ -313,10 +351,8 @@ $guru = mysqli_query(
                     <option value="">-- Tidak Dipilih --</option>
 
                     <?php while ($item = mysqli_fetch_assoc($guru)): ?>
-                        <option
-                            value="<?= $item['id']; ?>"
-                            <?= (string)$item['id'] === (string)$data['guru_id'] ? 'selected' : ''; ?>
-                        >
+                        <option value="<?= $item['id']; ?>"
+                            <?= (string)$item['id'] === (string)$data['guru_id'] ? 'selected' : ''; ?>>
                             <?= htmlspecialchars($item['nama']); ?>
                         </option>
                     <?php endwhile; ?>
@@ -325,41 +361,21 @@ $guru = mysqli_query(
 
             <div class="mb-3">
                 <label class="form-label">Tanggal</label>
-                <input
-                    type="date"
-                    name="tanggal"
-                    class="form-control"
-                    value="<?= htmlspecialchars($data['tanggal']); ?>"
-                    required
-                >
+                <input type="date" name="tanggal" class="form-control"
+                       value="<?= htmlspecialchars($data['tanggal']); ?>" required>
             </div>
 
             <div class="mb-3">
                 <label class="form-label">Keterangan</label>
-                <textarea
-                    name="keterangan"
-                    class="form-control"
-                    rows="4"
-                ><?= htmlspecialchars($data['keterangan'] ?? ''); ?></textarea>
+                <textarea name="keterangan" class="form-control" rows="4"><?= htmlspecialchars($data['keterangan'] ?? ''); ?></textarea>
             </div>
 
             <div class="mb-3">
                 <label class="form-label">Status</label>
                 <select name="status" class="form-select" required>
-                    <option value="tercatat"
-                        <?= $data['status'] === 'tercatat' ? 'selected' : ''; ?>>
-                        Tercatat
-                    </option>
-
-                    <option value="ditindaklanjuti"
-                        <?= $data['status'] === 'ditindaklanjuti' ? 'selected' : ''; ?>>
-                        Ditindaklanjuti
-                    </option>
-
-                    <option value="selesai"
-                        <?= $data['status'] === 'selesai' ? 'selected' : ''; ?>>
-                        Selesai
-                    </option>
+                    <option value="tercatat" <?= $data['status'] === 'tercatat' ? 'selected' : ''; ?>>Tercatat</option>
+                    <option value="ditindaklanjuti" <?= $data['status'] === 'ditindaklanjuti' ? 'selected' : ''; ?>>Ditindaklanjuti</option>
+                    <option value="selesai" <?= $data['status'] === 'selesai' ? 'selected' : ''; ?>>Selesai</option>
                 </select>
             </div>
 

@@ -1,25 +1,26 @@
 
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once "database.php";
+require_once "auth.php";
+
+hanyaRole(['admin']);
 
 /* =========================
-   CEK LOGIN
+   CSRF TOKEN
 ========================= */
 
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-/* =========================
-   CEK ROLE ADMIN
-========================= */
-
-if (($_SESSION['role'] ?? '') != 'admin') {
-    die("Akses ditolak.");
-}
+$csrf_token = $_SESSION['csrf_token'];
 
 /* =========================
    AMBIL ID
@@ -64,10 +65,14 @@ $pesan = "";
 
 if (isset($_POST['update'])) {
 
+    if (!hash_equals($csrf_token, $_POST['csrf_token'] ?? '')) {
+        die("Token keamanan tidak valid. Silakan muat ulang halaman.");
+    }
+
     $nama = trim($_POST['nama'] ?? '');
     $tanggal_mulai = $_POST['tanggal_mulai'] ?? '';
     $tanggal_selesai = $_POST['tanggal_selesai'] ?? '';
-    $aktif = isset($_POST['aktif']) ? (int)$_POST['aktif'] : 0;
+    $aktif = isset($_POST['aktif']) ? (int)$_POST['aktif'] : -1;
 
     // Pertahankan input jika validasi gagal
     $data['nama'] = $nama;
@@ -75,7 +80,7 @@ if (isset($_POST['update'])) {
     $data['tanggal_selesai'] = $tanggal_selesai;
     $data['aktif'] = $aktif;
 
-    if ($nama == '' || $tanggal_mulai == '' || $tanggal_selesai == '') {
+    if ($nama === '' || $tanggal_mulai === '' || $tanggal_selesai === '') {
 
         $pesan = "Semua data wajib diisi.";
 
@@ -114,39 +119,46 @@ if (isset($_POST['update'])) {
 
         } else {
 
-            /* CEK TAHUN AJARAN AKTIF LAIN */
+            mysqli_begin_transaction($koneksi);
 
-            if ($aktif == 1) {
+            try {
 
-                $stmt = mysqli_prepare(
-                    $koneksi,
-                    "SELECT id, nama
-                     FROM tahun_ajaran
-                     WHERE aktif = 1
-                     AND id != ?
-                     LIMIT 1"
-                );
+                /* CEK TAHUN AJARAN AKTIF LAIN */
 
-                mysqli_stmt_bind_param($stmt, "i", $id);
-                mysqli_stmt_execute($stmt);
+                if ($aktif == 1) {
 
-                $cek_aktif = mysqli_stmt_get_result($stmt);
-                $tahun_aktif = mysqli_fetch_assoc($cek_aktif);
+                    $stmt = mysqli_prepare(
+                        $koneksi,
+                        "SELECT id, nama
+                         FROM tahun_ajaran
+                         WHERE aktif = 1
+                         AND id != ?
+                         LIMIT 1
+                         FOR UPDATE"
+                    );
 
-                mysqli_stmt_close($stmt);
+                    if (!$stmt) {
+                        throw new Exception(mysqli_error($koneksi));
+                    }
 
-                if ($tahun_aktif) {
+                    mysqli_stmt_bind_param($stmt, "i", $id);
+                    mysqli_stmt_execute($stmt);
 
-                    $pesan = "Tidak bisa mengaktifkan tahun ajaran ini karena tahun ajaran "
-                        . $tahun_aktif['nama']
-                        . " masih aktif. Nonaktifkan terlebih dahulu tahun ajaran tersebut.";
+                    $cek_aktif = mysqli_stmt_get_result($stmt);
+                    $tahun_aktif = mysqli_fetch_assoc($cek_aktif);
 
+                    mysqli_stmt_close($stmt);
+
+                    if ($tahun_aktif) {
+                        throw new Exception(
+                            "Tidak bisa mengaktifkan tahun ajaran ini karena tahun ajaran " .
+                            $tahun_aktif['nama'] .
+                            " masih aktif. Nonaktifkan terlebih dahulu."
+                        );
+                    }
                 }
-            }
 
-            /* SIMPAN JIKA TIDAK ADA ERROR */
-
-            if ($pesan == '') {
+                /* UPDATE DATA */
 
                 $stmt = mysqli_prepare(
                     $koneksi,
@@ -159,36 +171,34 @@ if (isset($_POST['update'])) {
                 );
 
                 if (!$stmt) {
-
-                    $pesan = "Gagal menyiapkan query: " . mysqli_error($koneksi);
-
-                } else {
-
-                    mysqli_stmt_bind_param(
-                        $stmt,
-                        "sssii",
-                        $nama,
-                        $tanggal_mulai,
-                        $tanggal_selesai,
-                        $aktif,
-                        $id
-                    );
-
-                    if (mysqli_stmt_execute($stmt)) {
-
-                        mysqli_stmt_close($stmt);
-
-                        header("Location: kelola_tahun_ajaran.php");
-                        exit;
-
-                    } else {
-
-                        $pesan = "Gagal menyimpan perubahan: "
-                            . mysqli_stmt_error($stmt);
-
-                        mysqli_stmt_close($stmt);
-                    }
+                    throw new Exception(mysqli_error($koneksi));
                 }
+
+                mysqli_stmt_bind_param(
+                    $stmt,
+                    "sssii",
+                    $nama,
+                    $tanggal_mulai,
+                    $tanggal_selesai,
+                    $aktif,
+                    $id
+                );
+
+                if (!mysqli_stmt_execute($stmt)) {
+                    throw new Exception(mysqli_stmt_error($stmt));
+                }
+
+                mysqli_stmt_close($stmt);
+
+                mysqli_commit($koneksi);
+
+                header("Location: kelola_tahun_ajaran.php");
+                exit;
+
+            } catch (Exception $e) {
+
+                mysqli_rollback($koneksi);
+                $pesan = $e->getMessage();
             }
         }
     }
@@ -201,103 +211,103 @@ if (isset($_POST['update'])) {
 
 <head>
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Edit Tahun Ajaran</title>
+    <title>Edit Tahun Ajaran</title>
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-<style>
+    <style>
 
-body {
-    margin: 0;
-    background: #f4f6f8;
-    font-family: Arial, sans-serif;
-}
+        body {
+            margin: 0;
+            background: #f4f6f8;
+            font-family: Arial, sans-serif;
+        }
 
-.sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 220px;
-    height: 100vh;
-    background: #687280;
-    padding: 20px 12px;
-    overflow-y: auto;
-}
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 220px;
+            height: 100vh;
+            background: #687280;
+            padding: 20px 12px;
+            overflow-y: auto;
+        }
 
-.sidebar-title {
-    color: white;
-    font-size: 19px;
-    font-weight: bold;
-    margin: 0 8px 25px;
-    line-height: 1.4;
-}
+        .sidebar-title {
+            color: white;
+            font-size: 19px;
+            font-weight: bold;
+            margin: 0 8px 25px;
+            line-height: 1.4;
+        }
 
-.sidebar a {
-    display: block;
-    padding: 11px 13px;
-    margin-bottom: 5px;
-    color: white;
-    text-decoration: none;
-    border-radius: 5px;
-    font-size: 14px;
-}
+        .sidebar a {
+            display: block;
+            padding: 11px 13px;
+            margin-bottom: 5px;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+        }
 
-.sidebar a:hover,
-.sidebar a.active {
-    background: #4f5965;
-}
+        .sidebar a:hover,
+        .sidebar a.active {
+            background: #4f5965;
+        }
 
-.sidebar .logout {
-    margin-top: 20px;
-    background: #b42323;
-}
+        .sidebar .logout {
+            margin-top: 20px;
+            background: #b42323;
+        }
 
-.sidebar .logout:hover {
-    background: #941d1d;
-}
+        .sidebar .logout:hover {
+            background: #941d1d;
+        }
 
-.content {
-    margin-left: 220px;
-    padding: 30px;
-}
+        .content {
+            margin-left: 220px;
+            padding: 30px;
+        }
 
-.header-box {
-    background: white;
-    border: 1px solid #ddd;
-    border-radius: 7px;
-    padding: 22px;
-    margin-bottom: 20px;
-}
+        .header-box {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 7px;
+            padding: 22px;
+            margin-bottom: 20px;
+        }
 
-.header-box h1 {
-    font-size: 24px;
-    margin: 0;
-}
+        .header-box h1 {
+            font-size: 24px;
+            margin: 0;
+        }
 
-.header-box p {
-    color: #777;
-    margin: 8px 0 0;
-}
+        .header-box p {
+            color: #777;
+            margin: 8px 0 0;
+        }
 
-@media(max-width: 700px) {
+        @media(max-width: 700px) {
 
-    .sidebar {
-        position: relative;
-        width: 100%;
-        height: auto;
-    }
+            .sidebar {
+                position: relative;
+                width: 100%;
+                height: auto;
+            }
 
-    .content {
-        margin-left: 0;
-        padding: 15px;
-    }
+            .content {
+                margin-left: 0;
+                padding: 15px;
+            }
 
-}
+        }
 
-</style>
+    </style>
 
 </head>
 
@@ -323,17 +333,13 @@ body {
     <a href="tindakan.php">Data Tindakan</a>
     <a href="laporan.php">Laporan</a>
     <a href="about_me.php">ℹ About Me</a>
-
     <a href="logout.php" class="logout">🚪 Logout</a>
 
 </div>
 
-
-<!-- CONTENT -->
+<!-- KONTEN -->
 
 <div class="content">
-
-    <!-- HEADER -->
 
     <div class="header-box">
 
@@ -342,9 +348,6 @@ body {
         <p>Kelola data tahun ajaran sekolah.</p>
 
     </div>
-
-
-    <!-- FORM EDIT -->
 
     <div class="card shadow-sm">
 
@@ -356,17 +359,13 @@ body {
                 Ubah data tahun ajaran di bawah ini.
             </p>
 
-
-            <!-- PESAN -->
-
-            <?php if ($pesan != '') { ?>
+            <?php if ($pesan !== '') { ?>
 
                 <div class="alert alert-danger">
                     <?= htmlspecialchars($pesan); ?>
                 </div>
 
             <?php } ?>
-
 
             <!-- STATUS SAAT INI -->
 
@@ -396,10 +395,15 @@ body {
 
             </div>
 
-
-            <!-- FORM -->
+            <!-- FORM EDIT -->
 
             <form method="POST">
+
+                <input
+                    type="hidden"
+                    name="csrf_token"
+                    value="<?= htmlspecialchars($csrf_token); ?>"
+                >
 
                 <div class="row g-3">
 
@@ -420,7 +424,6 @@ body {
 
                     </div>
 
-
                     <div class="col-md-6">
 
                         <label class="form-label">
@@ -436,7 +439,6 @@ body {
                         >
 
                     </div>
-
 
                     <div class="col-md-6">
 
@@ -454,14 +456,13 @@ body {
 
                     </div>
 
-
                     <div class="col-md-12">
 
                         <label class="form-label">
                             Status Tahun Ajaran
                         </label>
 
-                        <select name="aktif" class="form-select">
+                        <select name="aktif" class="form-select" required>
 
                             <option
                                 value="1"
@@ -482,7 +483,6 @@ body {
                     </div>
 
                 </div>
-
 
                 <div class="mt-4">
 

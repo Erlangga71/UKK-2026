@@ -1,26 +1,28 @@
-
 <?php
 session_start();
 
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
-}
+require_once "database.php";
+require_once "auth.php";
 
-include "database.php";
-
-if (($_SESSION['role'] ?? '') != 'admin') {
-    echo "Akses ditolak.";
-    exit;
-}
+hanyaRole(['admin']);
 
 $error = "";
+
+/* =========================
+   TOKEN CSRF
+========================= */
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+$csrf_token = $_SESSION['csrf_token'];
 
 /* =========================
    AJAX: AMBIL KELAS TERSEDIA
 ========================= */
 
-if (isset($_GET['ajax']) && $_GET['ajax'] == 'kelas') {
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'kelas') {
 
     header('Content-Type: application/json; charset=utf-8');
 
@@ -31,32 +33,31 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == 'kelas') {
         exit;
     }
 
-    // Pastikan tahun ajaran benar-benar aktif
-    $cek_tahun = mysqli_prepare(
+    $stmt = mysqli_prepare(
         $koneksi,
         "SELECT id FROM tahun_ajaran
          WHERE id = ? AND aktif = 1"
     );
 
-    mysqli_stmt_bind_param($cek_tahun, "i", $tahun_id);
-    mysqli_stmt_execute($cek_tahun);
+    mysqli_stmt_bind_param($stmt, "i", $tahun_id);
+    mysqli_stmt_execute($stmt);
 
-    $hasil_tahun = mysqli_stmt_get_result($cek_tahun);
+    $hasil_tahun = mysqli_stmt_get_result($stmt);
     $tahun_valid = mysqli_num_rows($hasil_tahun) > 0;
 
-    mysqli_stmt_close($cek_tahun);
+    mysqli_stmt_close($stmt);
 
     if (!$tahun_valid) {
         echo json_encode([]);
         exit;
     }
 
-    // Ambil kelas yang belum memiliki wali kelas
     $stmt = mysqli_prepare(
         $koneksi,
         "SELECT k.id, k.nama_kelas
          FROM kelas k
-         WHERE NOT EXISTS (
+         WHERE k.status_aktif = 1
+         AND NOT EXISTS (
              SELECT 1
              FROM wali_kelas wk
              WHERE wk.kelas_id = k.id
@@ -78,7 +79,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == 'kelas') {
 
     mysqli_stmt_close($stmt);
 
-    echo json_encode($kelas_tersedia);
+    echo json_encode($kelas_tersedia, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -88,122 +89,143 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == 'kelas') {
 
 if (isset($_POST['simpan'])) {
 
-    $guru_id = intval($_POST['guru_id'] ?? 0);
-    $kelas_id = intval($_POST['kelas_id'] ?? 0);
-    $tahun_ajaran_id = intval($_POST['tahun_ajaran_id'] ?? 0);
-
-    if ($guru_id <= 0 || $kelas_id <= 0 || $tahun_ajaran_id <= 0) {
-
-        $error = "Guru, kelas, dan tahun ajaran wajib dipilih.";
-
+    if (
+        !isset($_POST['csrf_token']) ||
+        !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])
+    ) {
+        $error = "Permintaan tidak valid. Silakan muat ulang halaman.";
     } else {
 
-        // CEK GURU
-        $stmt = mysqli_prepare(
-            $koneksi,
-            "SELECT id FROM guru WHERE id = ?"
-        );
+        $guru_id = intval($_POST['guru_id'] ?? 0);
+        $kelas_id = intval($_POST['kelas_id'] ?? 0);
+        $tahun_ajaran_id = intval($_POST['tahun_ajaran_id'] ?? 0);
 
-        mysqli_stmt_bind_param($stmt, "i", $guru_id);
-        mysqli_stmt_execute($stmt);
+        if ($guru_id <= 0 || $kelas_id <= 0 || $tahun_ajaran_id <= 0) {
 
-        $cek_guru = mysqli_stmt_get_result($stmt);
-        $guru_valid = mysqli_num_rows($cek_guru) > 0;
-
-        mysqli_stmt_close($stmt);
-
-        // CEK KELAS
-        $stmt = mysqli_prepare(
-            $koneksi,
-            "SELECT id FROM kelas WHERE id = ?"
-        );
-
-        mysqli_stmt_bind_param($stmt, "i", $kelas_id);
-        mysqli_stmt_execute($stmt);
-
-        $cek_kelas = mysqli_stmt_get_result($stmt);
-        $kelas_valid = mysqli_num_rows($cek_kelas) > 0;
-
-        mysqli_stmt_close($stmt);
-
-        // CEK TAHUN AJARAN HARUS AKTIF
-        $stmt = mysqli_prepare(
-            $koneksi,
-            "SELECT id FROM tahun_ajaran
-             WHERE id = ? AND aktif = 1"
-        );
-
-        mysqli_stmt_bind_param($stmt, "i", $tahun_ajaran_id);
-        mysqli_stmt_execute($stmt);
-
-        $cek_tahun = mysqli_stmt_get_result($stmt);
-        $tahun_valid = mysqli_num_rows($cek_tahun) > 0;
-
-        mysqli_stmt_close($stmt);
-
-        if (!$guru_valid || !$kelas_valid || !$tahun_valid) {
-
-            $error = "Data guru, kelas, atau tahun ajaran tidak valid. Pastikan tahun ajaran masih aktif.";
+            $error = "Guru, kelas, dan tahun ajaran wajib dipilih.";
 
         } else {
 
-            // CEK KELAS SUDAH MEMILIKI WALI KELAS ATAU BELUM
+            // CEK GURU AKTIF DAN BELUM MENJADI WALI KELAS
             $stmt = mysqli_prepare(
                 $koneksi,
-                "SELECT id FROM wali_kelas
-                 WHERE kelas_id = ?
-                 AND tahun_ajaran_id = ?
-                 LIMIT 1"
+                "SELECT g.id
+                 FROM guru g
+                 WHERE g.id = ?
+                 AND g.status_aktif = 1
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM wali_kelas wk
+                     INNER JOIN tahun_ajaran t
+                         ON wk.tahun_ajaran_id = t.id
+                     WHERE wk.guru_id = g.id
+                     AND t.aktif = 1
+                 )"
             );
 
-            mysqli_stmt_bind_param(
-                $stmt,
-                "ii",
-                $kelas_id,
-                $tahun_ajaran_id
-            );
-
+            mysqli_stmt_bind_param($stmt, "i", $guru_id);
             mysqli_stmt_execute($stmt);
 
-            $cek = mysqli_stmt_get_result($stmt);
-            $sudah_ada = mysqli_num_rows($cek) > 0;
+            $cek_guru = mysqli_stmt_get_result($stmt);
+            $guru_valid = mysqli_num_rows($cek_guru) > 0;
 
             mysqli_stmt_close($stmt);
 
-            if ($sudah_ada) {
+            // CEK KELAS AKTIF
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "SELECT id FROM kelas
+                 WHERE id = ? AND status_aktif = 1"
+            );
 
-                $error = "Kelas tersebut sudah memiliki wali kelas pada tahun ajaran ini.";
+            mysqli_stmt_bind_param($stmt, "i", $kelas_id);
+            mysqli_stmt_execute($stmt);
+
+            $cek_kelas = mysqli_stmt_get_result($stmt);
+            $kelas_valid = mysqli_num_rows($cek_kelas) > 0;
+
+            mysqli_stmt_close($stmt);
+
+            // CEK TAHUN AJARAN AKTIF
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "SELECT id FROM tahun_ajaran
+                 WHERE id = ? AND aktif = 1"
+            );
+
+            mysqli_stmt_bind_param($stmt, "i", $tahun_ajaran_id);
+            mysqli_stmt_execute($stmt);
+
+            $cek_tahun = mysqli_stmt_get_result($stmt);
+            $tahun_valid = mysqli_num_rows($cek_tahun) > 0;
+
+            mysqli_stmt_close($stmt);
+
+            if (!$guru_valid || !$kelas_valid || !$tahun_valid) {
+
+                $error = "Guru, kelas, atau tahun ajaran tidak valid. Pastikan guru belum menjadi wali kelas dan semua data masih aktif.";
 
             } else {
 
-                // SIMPAN DATA
+                // CEK KELAS SUDAH MEMILIKI WALI KELAS
                 $stmt = mysqli_prepare(
                     $koneksi,
-                    "INSERT INTO wali_kelas
-                    (guru_id, kelas_id, tahun_ajaran_id)
-                    VALUES (?, ?, ?)"
+                    "SELECT id FROM wali_kelas
+                     WHERE kelas_id = ?
+                     AND tahun_ajaran_id = ?
+                     LIMIT 1"
                 );
 
                 mysqli_stmt_bind_param(
                     $stmt,
-                    "iii",
-                    $guru_id,
+                    "ii",
                     $kelas_id,
                     $tahun_ajaran_id
                 );
 
-                if (mysqli_stmt_execute($stmt)) {
+                mysqli_stmt_execute($stmt);
 
-                    mysqli_stmt_close($stmt);
+                $cek = mysqli_stmt_get_result($stmt);
+                $sudah_ada = mysqli_num_rows($cek) > 0;
 
-                    header("Location: kelola_wali_kelas.php");
-                    exit;
+                mysqli_stmt_close($stmt);
+
+                if ($sudah_ada) {
+
+                    $error = "Kelas tersebut sudah memiliki wali kelas pada tahun ajaran ini.";
 
                 } else {
 
-                    $error = "Gagal menambahkan wali kelas: " . mysqli_stmt_error($stmt);
+                    // SIMPAN DATA
+                    $stmt = mysqli_prepare(
+                        $koneksi,
+                        "INSERT INTO wali_kelas
+                         (guru_id, kelas_id, tahun_ajaran_id)
+                         VALUES (?, ?, ?)"
+                    );
 
-                    mysqli_stmt_close($stmt);
+                    mysqli_stmt_bind_param(
+                        $stmt,
+                        "iii",
+                        $guru_id,
+                        $kelas_id,
+                        $tahun_ajaran_id
+                    );
+
+                    if (mysqli_stmt_execute($stmt)) {
+
+                        mysqli_stmt_close($stmt);
+
+                        header("Location: kelola_wali_kelas.php");
+                        exit;
+
+                    } else {
+
+                        $error = "Gagal menambahkan wali kelas: " .
+                            mysqli_stmt_error($stmt);
+
+                        mysqli_stmt_close($stmt);
+                    }
                 }
             }
         }
@@ -214,31 +236,40 @@ if (isset($_POST['simpan'])) {
    HAPUS WALI KELAS
 ========================= */
 
-if (isset($_GET['hapus'])) {
+if (isset($_POST['hapus'])) {
 
-    $id = intval($_GET['hapus']);
+    if (
+        !isset($_POST['csrf_token']) ||
+        !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])
+    ) {
+        $error = "Permintaan hapus tidak valid.";
+    } else {
 
-    if ($id > 0) {
+        $id = intval($_POST['id'] ?? 0);
 
-        $stmt = mysqli_prepare(
-            $koneksi,
-            "DELETE FROM wali_kelas WHERE id = ?"
-        );
+        if ($id > 0) {
 
-        mysqli_stmt_bind_param($stmt, "i", $id);
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "DELETE FROM wali_kelas WHERE id = ?"
+            );
 
-        if (mysqli_stmt_execute($stmt)) {
+            mysqli_stmt_bind_param($stmt, "i", $id);
 
-            mysqli_stmt_close($stmt);
+            if (mysqli_stmt_execute($stmt)) {
 
-            header("Location: kelola_wali_kelas.php");
-            exit;
+                mysqli_stmt_close($stmt);
 
-        } else {
+                header("Location: kelola_wali_kelas.php");
+                exit;
 
-            $error = "Gagal menghapus data: " . mysqli_stmt_error($stmt);
+            } else {
 
-            mysqli_stmt_close($stmt);
+                $error = "Gagal menghapus data: " .
+                    mysqli_stmt_error($stmt);
+
+                mysqli_stmt_close($stmt);
+            }
         }
     }
 }
@@ -251,7 +282,7 @@ $cari = trim($_GET['cari'] ?? '');
 
 $where = "";
 
-if ($cari != '') {
+if ($cari !== '') {
 
     $cari_aman = mysqli_real_escape_string($koneksi, $cari);
 
@@ -284,9 +315,9 @@ if (!$query_jumlah) {
     die("Gagal menghitung data: " . mysqli_error($koneksi));
 }
 
-$total_data = mysqli_fetch_assoc($query_jumlah)['total'];
+$total_data = (int) mysqli_fetch_assoc($query_jumlah)['total'];
 
-$total_halaman = max(1, ceil($total_data / $batas));
+$total_halaman = max(1, (int) ceil($total_data / $batas));
 
 if ($halaman > $total_halaman) {
     $halaman = $total_halaman;
@@ -295,14 +326,23 @@ if ($halaman > $total_halaman) {
 $mulai = ($halaman - 1) * $batas;
 
 /* =========================
-   DATA GURU
+   DATA GURU YANG BELUM MENJADI WALI KELAS
 ========================= */
 
 $guru_data = mysqli_query(
     $koneksi,
-    "SELECT id, nip, nama
-     FROM guru
-     ORDER BY nama ASC"
+    "SELECT g.id, g.nip, g.nama
+     FROM guru g
+     WHERE g.status_aktif = 1
+     AND NOT EXISTS (
+         SELECT 1
+         FROM wali_kelas wk
+         INNER JOIN tahun_ajaran t
+             ON wk.tahun_ajaran_id = t.id
+         WHERE wk.guru_id = g.id
+         AND t.aktif = 1
+     )
+     ORDER BY g.nama ASC"
 );
 
 if (!$guru_data) {
@@ -509,7 +549,7 @@ if (!$data) {
 
     </div>
 
-    <?php if ($error != '') { ?>
+    <?php if ($error !== '') { ?>
 
         <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
@@ -649,14 +689,31 @@ if (!$data) {
 
                                 </a>
 
-                                <a
-                                    href="kelola_wali_kelas.php?hapus=<?= $row['id']; ?>"
-                                    class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Yakin ingin menghapus wali kelas ini?')">
+                                <form
+                                    method="POST"
+                                    class="d-inline"
+                                    onsubmit="return confirm('Yakin ingin menghapus wali kelas ini?');">
 
-                                    Hapus
+                                    <input
+                                        type="hidden"
+                                        name="csrf_token"
+                                        value="<?= htmlspecialchars($csrf_token); ?>">
 
-                                </a>
+                                    <input
+                                        type="hidden"
+                                        name="id"
+                                        value="<?= $row['id']; ?>">
+
+                                    <button
+                                        type="submit"
+                                        name="hapus"
+                                        class="btn btn-sm btn-danger">
+
+                                        Hapus
+
+                                    </button>
+
+                                </form>
 
                             </td>
 
@@ -730,6 +787,11 @@ if (!$data) {
 
             <form method="POST">
 
+                <input
+                    type="hidden"
+                    name="csrf_token"
+                    value="<?= htmlspecialchars($csrf_token); ?>">
+
                 <div class="row g-3">
 
                     <!-- GURU -->
@@ -761,6 +823,14 @@ if (!$data) {
                             <?php } ?>
 
                         </select>
+
+                        <?php if (mysqli_num_rows($guru_data) == 0) { ?>
+
+                            <small class="text-danger">
+                                Semua guru aktif sudah menjadi wali kelas pada tahun ajaran aktif.
+                            </small>
+
+                        <?php } ?>
 
                     </div>
 
@@ -891,63 +961,70 @@ function ambilKelas() {
 
     if (tahunId === "") {
 
-        kelasSelect.innerHTML = '<option value="">-- Pilih tahun ajaran terlebih dahulu --</option>';
+        kelasSelect.innerHTML =
+            '<option value="">-- Pilih tahun ajaran terlebih dahulu --</option>';
 
         return;
     }
 
-    fetch("kelola_wali_kelas.php?ajax=kelas&tahun_ajaran_id=" + encodeURIComponent(tahunId))
+    fetch(
+        "kelola_wali_kelas.php?ajax=kelas&tahun_ajaran_id=" +
+        encodeURIComponent(tahunId)
+    )
 
-        .then(response => {
+    .then(response => {
 
-            if (!response.ok) {
-                throw new Error("Gagal mengambil data kelas.");
-            }
+        if (!response.ok) {
+            throw new Error("Gagal mengambil data kelas.");
+        }
 
-            return response.json();
+        return response.json();
 
-        })
+    })
 
-        .then(data => {
+    .then(data => {
 
-            kelasSelect.innerHTML = "";
+        kelasSelect.innerHTML = "";
 
-            if (data.length === 0) {
+        if (data.length === 0) {
 
-                kelasSelect.innerHTML = '<option value="">Tidak ada kelas tersedia</option>';
-
-                kelasSelect.disabled = true;
-
-            } else {
-
-                kelasSelect.innerHTML = '<option value="">-- Pilih Kelas --</option>';
-
-                data.forEach(kelas => {
-
-                    const option = document.createElement("option");
-
-                    option.value = kelas.id;
-                    option.textContent = kelas.nama_kelas;
-
-                    kelasSelect.appendChild(option);
-
-                });
-
-                kelasSelect.disabled = false;
-
-            }
-
-        })
-
-        .catch(error => {
-
-            kelasSelect.innerHTML = '<option value="">Gagal memuat kelas</option>';
+            kelasSelect.innerHTML =
+                '<option value="">Tidak ada kelas tersedia</option>';
 
             kelasSelect.disabled = true;
 
-            alert(error.message);
+        } else {
 
-        });
+            kelasSelect.innerHTML =
+                '<option value="">-- Pilih Kelas --</option>';
+
+            data.forEach(kelas => {
+
+                const option = document.createElement("option");
+
+                option.value = kelas.id;
+                option.textContent = kelas.nama_kelas;
+
+                kelasSelect.appendChild(option);
+
+            });
+
+            kelasSelect.disabled = false;
+
+        }
+
+    })
+
+    .catch(error => {
+
+        kelasSelect.innerHTML =
+            '<option value="">Gagal memuat kelas</option>';
+
+        kelasSelect.disabled = true;
+
+        alert(error.message);
+
+    });
 
 }
 

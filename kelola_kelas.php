@@ -1,216 +1,273 @@
 
 <?php
-session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
-include "database.php";
+require_once "database.php";
+require_once "auth.php";
 
-$role = $_SESSION['role'] ?? '';
+hanyaRole(['admin']);
 
-if ($role != 'admin') {
-    die("Akses ditolak.");
-}
-
+$tambah = isset($_GET['tambah']) && $_GET['tambah'] == '1';
 $error = "";
-$tampil_form = isset($_GET['tambah']);
 
 /* =========================
-   TAMBAH KELAS
+   CSRF TOKEN
 ========================= */
 
-if (isset($_POST['simpan'])) {
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
-    $nama_kelas = trim($_POST['nama_kelas'] ?? '');
+/* =========================
+   TAMBAH DATA KELAS
+========================= */
 
-    if ($nama_kelas == '') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
 
-        $error = "Nama kelas wajib diisi.";
-        $tampil_form = true;
+    if (
+        !isset($_POST['csrf_token']) ||
+        !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])
+    ) {
+        $error = "Permintaan tidak valid. Muat ulang halaman.";
+        $tambah = true;
 
     } else {
 
-        $stmt = mysqli_prepare(
-            $koneksi,
-            "SELECT id FROM kelas WHERE nama_kelas = ? LIMIT 1"
-        );
+        $nama_kelas = trim($_POST['nama_kelas'] ?? '');
 
-        mysqli_stmt_bind_param($stmt, "s", $nama_kelas);
-        mysqli_stmt_execute($stmt);
+        if ($nama_kelas === '') {
 
-        $cek = mysqli_stmt_get_result($stmt);
-        $ada = mysqli_num_rows($cek) > 0;
-
-        mysqli_stmt_close($stmt);
-
-        if ($ada) {
-
-            $error = "Nama kelas tersebut sudah ada.";
-            $tampil_form = true;
+            $error = "Nama kelas wajib diisi.";
+            $tambah = true;
 
         } else {
 
             $stmt = mysqli_prepare(
                 $koneksi,
-                "INSERT INTO kelas (nama_kelas) VALUES (?)"
+                "SELECT id FROM kelas WHERE nama_kelas = ? LIMIT 1"
             );
 
             mysqli_stmt_bind_param($stmt, "s", $nama_kelas);
+            mysqli_stmt_execute($stmt);
 
-            if (mysqli_stmt_execute($stmt)) {
+            $cek = mysqli_stmt_get_result($stmt);
+            $ada = mysqli_num_rows($cek) > 0;
 
-                mysqli_stmt_close($stmt);
+            mysqli_stmt_close($stmt);
 
-                header("Location: kelola_kelas.php");
-                exit;
+            if ($ada) {
+
+                $error = "Nama kelas tersebut sudah ada.";
+                $tambah = true;
 
             } else {
 
-                $error = "Gagal menambahkan kelas: " . mysqli_error($koneksi);
-                $tampil_form = true;
-                mysqli_stmt_close($stmt);
+                $stmt = mysqli_prepare(
+                    $koneksi,
+                    "INSERT INTO kelas (nama_kelas) VALUES (?)"
+                );
+
+                mysqli_stmt_bind_param($stmt, "s", $nama_kelas);
+
+                if (mysqli_stmt_execute($stmt)) {
+
+                    mysqli_stmt_close($stmt);
+
+                    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
+                    header("Location: kelola_kelas.php");
+                    exit;
+
+                } else {
+
+                    $error = "Gagal menambahkan kelas: " . mysqli_stmt_error($stmt);
+                    $tambah = true;
+
+                    mysqli_stmt_close($stmt);
+                }
             }
         }
     }
 }
 
-
 /* =========================
-   HAPUS KELAS
+   HAPUS DATA KELAS
 ========================= */
 
-if (isset($_GET['hapus'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hapus'])) {
 
-    $id = (int)$_GET['hapus'];
+    if (
+        !isset($_POST['csrf_token']) ||
+        !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])
+    ) {
+        $error = "Permintaan tidak valid. Muat ulang halaman.";
 
-    if ($id > 0) {
+    } else {
 
-        // Cek apakah kelas masih digunakan
-        $stmt = mysqli_prepare(
-            $koneksi,
-            "SELECT
-                (SELECT COUNT(*) FROM penempatan_siswa WHERE kelas_id = ?) +
-                (SELECT COUNT(*) FROM wali_kelas WHERE kelas_id = ?) AS total"
-        );
+        $id = (int) $_POST['hapus'];
 
-        mysqli_stmt_bind_param($stmt, "ii", $id, $id);
-        mysqli_stmt_execute($stmt);
-
-        $hasil = mysqli_stmt_get_result($stmt);
-        $jumlah = (int)mysqli_fetch_assoc($hasil)['total'];
-
-        mysqli_stmt_close($stmt);
-
-        if ($jumlah > 0) {
-
-            $error = "Kelas tidak bisa dihapus karena masih digunakan.";
-
-        } else {
+        if ($id > 0) {
 
             $stmt = mysqli_prepare(
                 $koneksi,
-                "DELETE FROM kelas WHERE id = ?"
+                "SELECT
+                    (SELECT COUNT(*) FROM penempatan_siswa WHERE kelas_id = ?) +
+                    (SELECT COUNT(*) FROM wali_kelas WHERE kelas_id = ?) AS total"
             );
 
-            mysqli_stmt_bind_param($stmt, "i", $id);
+            mysqli_stmt_bind_param($stmt, "ii", $id, $id);
+            mysqli_stmt_execute($stmt);
 
-            if (mysqli_stmt_execute($stmt)) {
-                mysqli_stmt_close($stmt);
-                header("Location: kelola_kelas.php");
-                exit;
+            $hasil = mysqli_stmt_get_result($stmt);
+            $jumlah = (int) mysqli_fetch_assoc($hasil)['total'];
+
+            mysqli_stmt_close($stmt);
+
+            if ($jumlah > 0) {
+
+                $error = "Kelas tidak bisa dihapus karena masih digunakan.";
+
             } else {
-                $error = "Gagal menghapus kelas: " . mysqli_error($koneksi);
-                mysqli_stmt_close($stmt);
+
+                $stmt = mysqli_prepare(
+                    $koneksi,
+                    "DELETE FROM kelas WHERE id = ?"
+                );
+
+                mysqli_stmt_bind_param($stmt, "i", $id);
+
+                if (mysqli_stmt_execute($stmt)) {
+
+                    mysqli_stmt_close($stmt);
+
+                    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
+                    header("Location: kelola_kelas.php");
+                    exit;
+
+                } else {
+
+                    $error = "Gagal menghapus kelas: " . mysqli_stmt_error($stmt);
+
+                    mysqli_stmt_close($stmt);
+                }
             }
         }
     }
 }
-
 
 /* =========================
    PENCARIAN
 ========================= */
 
-$search = trim($_GET['search'] ?? '');
-$cari = "%$search%";
-
+$cari = trim($_GET['cari'] ?? '');
 
 /* =========================
    PAGINATION
 ========================= */
 
-$per_halaman = 5;
-$halaman = max(1, (int)($_GET['halaman'] ?? 1));
-
+$batas = 10;
+$halaman = max(1, (int) ($_GET['halaman'] ?? 1));
+$mulai = ($halaman - 1) * $batas;
 
 /* =========================
    HITUNG DATA
 ========================= */
 
-if ($search != '') {
+if ($cari !== '') {
 
-    $stmt = $koneksi->prepare(
+    $keyword = "%" . $cari . "%";
+
+    $stmt_total = mysqli_prepare(
+        $koneksi,
         "SELECT COUNT(*) AS total
          FROM kelas
          WHERE nama_kelas LIKE ?"
     );
 
-    $stmt->bind_param("s", $cari);
+    mysqli_stmt_bind_param($stmt_total, "s", $keyword);
+    mysqli_stmt_execute($stmt_total);
+
+    $hasil_total = mysqli_stmt_get_result($stmt_total);
+    $total_data = (int) mysqli_fetch_assoc($hasil_total)['total'];
+
+    mysqli_stmt_close($stmt_total);
 
 } else {
 
-    $stmt = $koneksi->prepare(
+    $hasil_total = mysqli_query(
+        $koneksi,
         "SELECT COUNT(*) AS total FROM kelas"
     );
+
+    $total_data = (int) mysqli_fetch_assoc($hasil_total)['total'];
 }
 
-$stmt->execute();
-$total_data = (int)$stmt->get_result()->fetch_assoc()['total'];
-$stmt->close();
-
-$total_halaman = max(1, (int)ceil($total_data / $per_halaman));
+$total_halaman = max(1, (int) ceil($total_data / $batas));
 
 if ($halaman > $total_halaman) {
     $halaman = $total_halaman;
 }
 
-$mulai = ($halaman - 1) * $per_halaman;
-
+$mulai = ($halaman - 1) * $batas;
 
 /* =========================
    AMBIL DATA KELAS
 ========================= */
 
-if ($search != '') {
+if ($cari !== '') {
 
-    $stmt = $koneksi->prepare(
+    $stmt_data = mysqli_prepare(
+        $koneksi,
         "SELECT id, nama_kelas
          FROM kelas
          WHERE nama_kelas LIKE ?
-         ORDER BY nama_kelas ASC
-         LIMIT ?, ?"
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?"
     );
 
-    $stmt->bind_param("sii", $cari, $mulai, $per_halaman);
+    mysqli_stmt_bind_param(
+        $stmt_data,
+        "sii",
+        $keyword,
+        $batas,
+        $mulai
+    );
 
 } else {
 
-    $stmt = $koneksi->prepare(
+    $stmt_data = mysqli_prepare(
+        $koneksi,
         "SELECT id, nama_kelas
          FROM kelas
-         ORDER BY nama_kelas ASC
-         LIMIT ?, ?"
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?"
     );
 
-    $stmt->bind_param("ii", $mulai, $per_halaman);
+    mysqli_stmt_bind_param(
+        $stmt_data,
+        "ii",
+        $batas,
+        $mulai
+    );
 }
 
-$stmt->execute();
-$data = $stmt->get_result();
+mysqli_stmt_execute($stmt_data);
+$data = mysqli_stmt_get_result($stmt_data);
 
+/* =========================
+   URL PAGINATION
+========================= */
+
+function urlHalamanKelas($halaman, $cari) {
+    return "kelola_kelas.php?halaman=" . $halaman .
+           "&cari=" . urlencode($cari);
+}
 ?>
 
 <!DOCTYPE html>
@@ -218,63 +275,156 @@ $data = $stmt->get_result();
 
 <head>
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Data Kelas</title>
+    <title>Data Kelas</title>
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-<style>
+    <style>
 
-body {
-    background: #f4f6f8;
-}
+        * {
+            box-sizing: border-box;
+        }
 
-.sidebar {
-    width: 220px;
-    background: #687280;
-}
+        body {
+            margin: 0;
+            background: #f4f6f8;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            color: #212529;
+        }
 
-.sidebar .nav-link {
-    color: white;
-    font-size: 14px;
-}
+        /* SIDEBAR */
 
-.sidebar .nav-link:hover,
-.sidebar .nav-link.active {
-    background: #4f5965;
-}
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 220px;
+            height: 100vh;
+            background: #687280;
+            padding: 20px 12px;
+            overflow-y: auto;
+        }
 
-.content {
-    margin-left: 220px;
-}
+        .sidebar-title {
+            color: white;
+            font-size: 19px;
+            font-weight: bold;
+            margin: 0 8px 25px;
+            line-height: 1.4;
+        }
 
-.btn-stabilo {
-    background: #9dff00;
-    color: #1a3300;
-    font-weight: bold;
-    border: none;
-}
+        .sidebar a {
+            display: block;
+            padding: 11px 13px;
+            margin-bottom: 5px;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+        }
 
-.btn-stabilo:hover {
-    background: #86e000;
-    color: #1a3300;
-}
+        .sidebar a:hover,
+        .sidebar a.active {
+            background: #4f5965;
+        }
 
-@media (max-width: 700px) {
-    .sidebar {
-        position: static !important;
-        width: 100%;
-        height: auto !important;
-    }
+        .sidebar .logout {
+            margin-top: 20px;
+            background: #b42323;
+        }
 
-    .content {
-        margin-left: 0;
-    }
-}
+        .sidebar .logout:hover {
+            background: #941d1d;
+        }
 
-</style>
+        /* KONTEN */
+
+        .content {
+            margin-left: 220px;
+            padding: 30px;
+        }
+
+        .card {
+            border: 1px solid #dddddd;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+
+        .card-body {
+            padding: 16px;
+        }
+
+        /* TOMBOL */
+
+        .btn-stabilo {
+            background: #9dff00;
+            color: #1a3300;
+            font-weight: bold;
+            border: none;
+        }
+
+        .btn-stabilo:hover {
+            background: #86e000;
+            color: #1a3300;
+        }
+
+        /* TABEL */
+
+        .table {
+            font-size: 12px;
+            margin-bottom: 0;
+        }
+
+        .table thead th {
+            background: #dedede;
+            color: #111;
+            font-weight: bold;
+            border-bottom: 1px solid #bbb;
+        }
+
+        .table td,
+        .table th {
+            padding: 8px;
+            vertical-align: middle;
+        }
+
+        .table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        /* PAGINATION */
+
+        .pagination .page-link {
+            color: #4f5965;
+        }
+
+        .pagination .active .page-link {
+            background: #687280;
+            border-color: #687280;
+            color: white;
+        }
+
+        /* LAYAR KECIL */
+
+        @media(max-width: 700px) {
+
+            .sidebar {
+                position: relative;
+                width: 100%;
+                height: auto;
+            }
+
+            .content {
+                margin-left: 0;
+                padding: 15px;
+            }
+        }
+
+    </style>
 
 </head>
 
@@ -282,47 +432,38 @@ body {
 
 <!-- SIDEBAR -->
 
-<div class="sidebar position-fixed top-0 start-0 vh-100 overflow-auto p-3">
+<div class="sidebar">
 
-    <h5 class="text-white fw-bold mb-4 px-2">
+    <div class="sidebar-title">
         ⚖ Pelanggaran<br>Siswa
-    </h5>
+    </div>
 
-    <ul class="nav flex-column gap-1">
+    <a href="dashboard.php">🏠 Dashboard</a>
+    <a href="kelola_siswa.php">Data Siswa</a>
+    <a href="kelola_guru.php">Data Guru</a>
+    <a href="kelola_kelas.php" class="active">Data Kelas</a>
+    <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
+    <a href="kelola_wali_kelas.php">Wali Kelas</a>
+    <a href="penempatan_siswa.php">Penempatan Siswa</a>
+    <a href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a>
+    <a href="pelanggaran.php">Data Pelanggaran</a>
+    <a href="tindakan.php">Data Tindakan</a>
+    <a href="laporan.php">Laporan</a>
+    <a href="about_me.php">ℹ About Me</a>
 
-        <li><a class="nav-link" href="dashboard.php">🏠 Dashboard</a></li>
-        <li><a class="nav-link" href="kelola_siswa.php">Data Siswa</a></li>
-        <li><a class="nav-link" href="kelola_guru.php">Data Guru</a></li>
-        <li><a class="nav-link active" href="kelola_kelas.php">Data Kelas</a></li>
-        <li><a class="nav-link" href="kelola_tahun_ajaran.php">Tahun Ajaran</a></li>
-        <li><a class="nav-link" href="kelola_wali_kelas.php">Wali Kelas</a></li>
-        <li><a class="nav-link" href="penempatan_siswa.php">Penempatan Siswa</a></li>
-        <li><a class="nav-link" href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a></li>
-        <li><a class="nav-link" href="pelanggaran.php">Data Pelanggaran</a></li>
-        <li><a class="nav-link" href="tindakan.php">Data Tindakan</a></li>
-        <li><a class="nav-link" href="laporan.php">Laporan</a></li>
-        <li><a class="nav-link" href="about_me.php">ℹ About Me</a></li>
-
-    </ul>
-
-    <a href="logout.php" class="btn btn-danger w-100 mt-4 text-start">
-        🚪 Logout
-    </a>
+    <a href="logout.php" class="logout">🚪 Logout</a>
 
 </div>
 
+<!-- KONTEN -->
 
-<!-- CONTENT -->
+<div class="content">
 
-<div class="content p-4">
-
-    <!-- HEADER -->
-
-    <div class="card mb-3">
+    <div class="card">
 
         <div class="card-body">
 
-            <h1 class="h3 mb-1">Data Kelas</h1>
+            <h1 class="h4 mb-1">Data Kelas</h1>
 
             <p class="text-muted mb-0">
                 Kelola data kelas dalam sistem.
@@ -332,10 +473,9 @@ body {
 
     </div>
 
-
     <!-- PESAN ERROR -->
 
-    <?php if ($error != '') { ?>
+    <?php if ($error !== '') { ?>
 
         <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
@@ -343,18 +483,23 @@ body {
 
     <?php } ?>
 
-
     <!-- FORM TAMBAH -->
 
-    <?php if ($tampil_form) { ?>
+    <?php if ($tambah) { ?>
 
-        <div class="card mb-3">
+        <div class="card">
 
             <div class="card-body">
 
                 <h2 class="h5 mb-3">Tambah Data Kelas</h2>
 
                 <form method="POST">
+
+                    <input
+                        type="hidden"
+                        name="csrf_token"
+                        value="<?= htmlspecialchars($_SESSION['csrf_token']); ?>"
+                    >
 
                     <div class="row g-3">
 
@@ -369,6 +514,7 @@ body {
                                 name="nama_kelas"
                                 class="form-control"
                                 placeholder="Contoh: XII RPL 1"
+                                value="<?= htmlspecialchars($_POST['nama_kelas'] ?? ''); ?>"
                                 required
                             >
 
@@ -396,18 +542,17 @@ body {
 
     <?php } ?>
 
-
     <!-- DAFTAR KELAS -->
 
     <div class="card">
 
         <div class="card-body">
 
-            <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
 
                 <h2 class="h5 mb-0">Daftar Kelas</h2>
 
-                <?php if (!$tampil_form) { ?>
+                <?php if (!$tambah) { ?>
 
                     <a href="kelola_kelas.php?tambah=1" class="btn btn-sm btn-stabilo">
                         + Tambah Kelas
@@ -417,7 +562,6 @@ body {
 
             </div>
 
-
             <!-- PENCARIAN -->
 
             <form method="GET" class="row g-2 mb-3">
@@ -426,89 +570,101 @@ body {
 
                     <input
                         type="text"
-                        name="search"
-                        class="form-control"
+                        name="cari"
+                        class="form-control form-control-sm"
                         placeholder="Cari nama kelas..."
-                        value="<?= htmlspecialchars($search); ?>"
+                        value="<?= htmlspecialchars($cari); ?>"
                     >
 
                 </div>
 
                 <div class="col-auto">
 
-                    <button type="submit" class="btn btn-secondary">
+                    <button type="submit" class="btn btn-sm btn-secondary">
                         Cari
                     </button>
 
-                    <?php if ($search != '') { ?>
-
-                        <a href="kelola_kelas.php" class="btn btn-outline-secondary">
-                            Reset
-                        </a>
-
-                    <?php } ?>
+                    <a href="kelola_kelas.php" class="btn btn-sm btn-outline-secondary">
+                        Reset
+                    </a>
 
                 </div>
 
             </form>
 
-
             <!-- TABEL KELAS -->
 
             <div class="table-responsive">
 
-                <table class="table table-hover align-middle">
+                <table class="table table-bordered table-hover align-middle">
 
-                    <thead class="table-secondary">
+                    <thead>
 
                         <tr>
-                            <th>No</th>
-                            <th>Nama Kelas</th>
-                            <th>Aksi</th>
+                            <th width="10%">No</th>
+                            <th width="65%">Nama Kelas</th>
+                            <th width="25%">Aksi</th>
                         </tr>
 
                     </thead>
 
                     <tbody>
 
-                    <?php if ($data && $data->num_rows > 0) { ?>
+                    <?php
+                    $no = $mulai + 1;
 
-                        <?php $no = $mulai + 1; ?>
+                    if ($data && mysqli_num_rows($data) > 0) {
 
-                        <?php while ($row = $data->fetch_assoc()) { ?>
+                        while ($row = mysqli_fetch_assoc($data)) {
+                    ?>
 
-                            <tr>
+                        <tr>
 
-                                <td><?= $no++; ?></td>
+                            <td><?= $no++; ?></td>
 
-                                <td>
-                                    <b><?= htmlspecialchars($row['nama_kelas']); ?></b>
-                                </td>
+                            <td>
+                                <b><?= htmlspecialchars($row['nama_kelas']); ?></b>
+                            </td>
 
-                                <td class="text-nowrap">
+                            <td class="text-nowrap">
 
-                                    <a
-                                        class="btn btn-sm btn-stabilo"
-                                        href="edit_kelas.php?id=<?= (int)$row['id']; ?>"
+                                <a
+                                    class="btn btn-sm btn-stabilo"
+                                    href="edit_kelas.php?id=<?= (int)$row['id']; ?>"
+                                >Edit</a>
+
+                                <form
+                                    method="POST"
+                                    style="display:inline;"
+                                    onsubmit="return confirm('Yakin ingin menghapus kelas ini?')"
+                                >
+
+                                    <input
+                                        type="hidden"
+                                        name="csrf_token"
+                                        value="<?= htmlspecialchars($_SESSION['csrf_token']); ?>"
                                     >
-                                        Edit
-                                    </a>
 
-                                    <a
+                                    <button
+                                        type="submit"
+                                        name="hapus"
+                                        value="<?= (int)$row['id']; ?>"
                                         class="btn btn-sm btn-danger"
-                                        href="kelola_kelas.php?hapus=<?= (int)$row['id']; ?>"
-                                        onclick="return confirm('Yakin ingin menghapus kelas ini?')"
                                     >
                                         Hapus
-                                    </a>
+                                    </button>
 
-                                </td>
+                                </form>
 
-                            </tr>
+                            </td>
 
-                        <?php } ?>
+                        </tr>
 
-                    <?php } else { ?>
+                    <?php
+                        }
+
+                    } else {
+                    ?>
 
                         <tr>
 
@@ -526,76 +682,78 @@ body {
 
             </div>
 
-
             <!-- INFORMASI DATA -->
 
-            <div class="text-muted small">
+            <div class="d-flex justify-content-between align-items-center flex-wrap mt-3">
 
-                Menampilkan
-                <?= $total_data > 0 ? $mulai + 1 : 0; ?>
-                -
-                <?= min($mulai + $per_halaman, $total_data); ?>
-                dari
-                <?= $total_data; ?>
-                data kelas.
+                <small class="text-muted">
+
+                    Menampilkan <?= $total_data > 0 ? $mulai + 1 : 0; ?>
+                    sampai <?= min($mulai + $batas, $total_data); ?>
+                    dari <?= $total_data; ?> data kelas
+
+                </small>
+
+                <!-- PAGINATION -->
+
+                <?php if ($total_halaman > 1) { ?>
+
+                    <nav>
+
+                        <ul class="pagination pagination-sm mb-0">
+
+                            <?php if ($halaman > 1) { ?>
+
+                                <li class="page-item">
+
+                                    <a
+                                        class="page-link"
+                                        href="<?= urlHalamanKelas($halaman - 1, $cari); ?>"
+                                    >
+                                        Sebelumnya
+                                    </a>
+
+                                </li>
+
+                            <?php } ?>
+
+                            <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+
+                                <li class="page-item <?= ($i == $halaman) ? 'active' : ''; ?>">
+
+                                    <a
+                                        class="page-link"
+                                        href="<?= urlHalamanKelas($i, $cari); ?>"
+                                    >
+                                        <?= $i; ?>
+                                    </a>
+
+                                </li>
+
+                            <?php } ?>
+
+                            <?php if ($halaman < $total_halaman) { ?>
+
+                                <li class="page-item">
+
+                                    <a
+                                        class="page-link"
+                                        href="<?= urlHalamanKelas($halaman + 1, $cari); ?>"
+                                    >
+                                        Berikutnya
+                                    </a>
+
+                                </li>
+
+                            <?php } ?>
+
+                        </ul>
+
+                    </nav>
+
+                <?php } ?>
 
             </div>
-
-
-            <!-- PAGINATION -->
-
-            <?php if ($total_halaman > 1) { ?>
-
-                <nav class="mt-3">
-
-                    <ul class="pagination mb-0">
-
-                        <?php if ($halaman > 1) { ?>
-
-                            <li class="page-item">
-
-                                <a class="page-link"
-                                   href="?halaman=<?= $halaman - 1; ?>&search=<?= urlencode($search); ?>">
-                                    &laquo;
-                                </a>
-
-                            </li>
-
-                        <?php } ?>
-
-
-                        <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
-
-                            <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
-
-                                <a class="page-link"
-                                   href="?halaman=<?= $i; ?>&search=<?= urlencode($search); ?>">
-                                    <?= $i; ?>
-                                </a>
-
-                            </li>
-
-                        <?php } ?>
-
-
-                        <?php if ($halaman < $total_halaman) { ?>
-
-                            <li class="page-item">
-
-                                <a class="page-link"
-                                   href="?halaman=<?= $halaman + 1; ?>&search=<?= urlencode($search); ?>">
-                                    &raquo;
-                                </a>
-
-                            </li>
-
-                        <?php } ?>
-
-                    </ul>
-
-                </nav>
-
-            <?php } ?>
 
         </div>
 

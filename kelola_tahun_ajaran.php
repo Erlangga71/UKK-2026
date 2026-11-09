@@ -1,20 +1,28 @@
 
 <?php
-session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
-include "database.php";
+require_once "database.php";
+require_once "auth.php";
 
-if (($_SESSION['role'] ?? '') != 'admin') {
-    echo "Akses ditolak.";
-    exit;
-}
+hanyaRole(['admin']);
 
 $error = "";
+
+/* =========================
+   CSRF TOKEN
+========================= */
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+$csrf_token = $_SESSION['csrf_token'];
 
 /* =========================
    TAMBAH TAHUN AJARAN
@@ -22,12 +30,16 @@ $error = "";
 
 if (isset($_POST['simpan'])) {
 
+    if (!hash_equals($csrf_token, $_POST['csrf_token'] ?? '')) {
+        die("Token keamanan tidak valid. Silakan muat ulang halaman.");
+    }
+
     $nama = trim($_POST['nama'] ?? '');
     $tanggal_mulai = $_POST['tanggal_mulai'] ?? '';
     $tanggal_selesai = $_POST['tanggal_selesai'] ?? '';
     $aktif = isset($_POST['aktif']) ? 1 : 0;
 
-    if ($nama == '' || $tanggal_mulai == '' || $tanggal_selesai == '') {
+    if ($nama === '' || $tanggal_mulai === '' || $tanggal_selesai === '') {
 
         $error = "Semua data wajib diisi.";
 
@@ -37,7 +49,6 @@ if (isset($_POST['simpan'])) {
 
     } else {
 
-        // CEK NAMA TAHUN AJARAN
         $cek = mysqli_prepare(
             $koneksi,
             "SELECT id FROM tahun_ajaran WHERE nama = ?"
@@ -61,7 +72,6 @@ if (isset($_POST['simpan'])) {
 
             try {
 
-                // CEK APAKAH SUDAH ADA TAHUN AJARAN AKTIF
                 if ($aktif == 1) {
 
                     $cek_aktif = mysqli_query(
@@ -81,14 +91,12 @@ if (isset($_POST['simpan'])) {
                         $tahun_aktif = mysqli_fetch_assoc($cek_aktif)['nama'];
 
                         throw new Exception(
-                            "Tidak bisa menambahkan tahun ajaran aktif baru karena tahun ajaran " .
-                            $tahun_aktif .
-                            " masih aktif. Nonaktifkan terlebih dahulu tahun ajaran tersebut."
+                            "Tahun ajaran " . $tahun_aktif .
+                            " masih aktif. Nonaktifkan terlebih dahulu."
                         );
                     }
                 }
 
-                // INSERT TAHUN AJARAN
                 $stmt = mysqli_prepare(
                     $koneksi,
                     "INSERT INTO tahun_ajaran
@@ -123,7 +131,6 @@ if (isset($_POST['simpan'])) {
             } catch (Exception $e) {
 
                 mysqli_rollback($koneksi);
-
                 $error = $e->getMessage();
             }
         }
@@ -134,67 +141,100 @@ if (isset($_POST['simpan'])) {
    HAPUS TAHUN AJARAN
 ========================= */
 
-if (isset($_GET['hapus'])) {
+if (isset($_POST['hapus'])) {
 
-    $id = intval($_GET['hapus']);
+    if (!hash_equals($csrf_token, $_POST['csrf_token'] ?? '')) {
+        die("Token keamanan tidak valid. Silakan muat ulang halaman.");
+    }
 
-    if ($id > 0) {
+    $id = intval($_POST['id'] ?? 0);
 
-        $cek_penempatan = mysqli_prepare(
+    if ($id <= 0) {
+
+        $error = "ID tahun ajaran tidak valid.";
+
+    } else {
+
+        $stmt = mysqli_prepare(
             $koneksi,
-            "SELECT id FROM penempatan_siswa
-             WHERE tahun_ajaran_id = ?
-             LIMIT 1"
+            "SELECT aktif FROM tahun_ajaran WHERE id = ?"
         );
 
-        mysqli_stmt_bind_param($cek_penempatan, "i", $id);
-        mysqli_stmt_execute($cek_penempatan);
+        mysqli_stmt_bind_param($stmt, "i", $id);
+        mysqli_stmt_execute($stmt);
 
-        $hasil_penempatan = mysqli_stmt_get_result($cek_penempatan);
-        $ada_penempatan = mysqli_num_rows($hasil_penempatan) > 0;
+        $hasil = mysqli_stmt_get_result($stmt);
+        $tahun = mysqli_fetch_assoc($hasil);
 
-        mysqli_stmt_close($cek_penempatan);
+        mysqli_stmt_close($stmt);
 
-        $cek_wali = mysqli_prepare(
-            $koneksi,
-            "SELECT id FROM wali_kelas
-             WHERE tahun_ajaran_id = ?
-             LIMIT 1"
-        );
+        if (!$tahun) {
 
-        mysqli_stmt_bind_param($cek_wali, "i", $id);
-        mysqli_stmt_execute($cek_wali);
+            $error = "Data tahun ajaran tidak ditemukan.";
 
-        $hasil_wali = mysqli_stmt_get_result($cek_wali);
-        $ada_wali = mysqli_num_rows($hasil_wali) > 0;
+        } elseif ($tahun['aktif'] == 1) {
 
-        mysqli_stmt_close($cek_wali);
-
-        if ($ada_penempatan || $ada_wali) {
-
-            $error = "Tahun ajaran tidak bisa dihapus karena masih digunakan pada data penempatan siswa atau wali kelas.";
+            $error = "Tahun ajaran yang sedang aktif tidak boleh dihapus.";
 
         } else {
 
             $stmt = mysqli_prepare(
                 $koneksi,
-                "DELETE FROM tahun_ajaran WHERE id = ?"
+                "SELECT id FROM penempatan_siswa
+                 WHERE tahun_ajaran_id = ?
+                 LIMIT 1"
             );
 
             mysqli_stmt_bind_param($stmt, "i", $id);
+            mysqli_stmt_execute($stmt);
 
-            if (mysqli_stmt_execute($stmt)) {
+            $hasil_penempatan = mysqli_stmt_get_result($stmt);
+            $ada_penempatan = mysqli_num_rows($hasil_penempatan) > 0;
 
-                mysqli_stmt_close($stmt);
+            mysqli_stmt_close($stmt);
 
-                header("Location: kelola_tahun_ajaran.php");
-                exit;
+            $stmt = mysqli_prepare(
+                $koneksi,
+                "SELECT id FROM wali_kelas
+                 WHERE tahun_ajaran_id = ?
+                 LIMIT 1"
+            );
+
+            mysqli_stmt_bind_param($stmt, "i", $id);
+            mysqli_stmt_execute($stmt);
+
+            $hasil_wali = mysqli_stmt_get_result($stmt);
+            $ada_wali = mysqli_num_rows($hasil_wali) > 0;
+
+            mysqli_stmt_close($stmt);
+
+            if ($ada_penempatan || $ada_wali) {
+
+                $error = "Tahun ajaran tidak bisa dihapus karena masih digunakan pada data penempatan siswa atau wali kelas.";
 
             } else {
 
-                $error = "Gagal menghapus tahun ajaran: " . mysqli_stmt_error($stmt);
+                $stmt = mysqli_prepare(
+                    $koneksi,
+                    "DELETE FROM tahun_ajaran WHERE id = ?"
+                );
 
-                mysqli_stmt_close($stmt);
+                mysqli_stmt_bind_param($stmt, "i", $id);
+
+                if (mysqli_stmt_execute($stmt)) {
+
+                    mysqli_stmt_close($stmt);
+
+                    header("Location: kelola_tahun_ajaran.php");
+                    exit;
+
+                } else {
+
+                    $error = "Gagal menghapus tahun ajaran: " .
+                             mysqli_stmt_error($stmt);
+
+                    mysqli_stmt_close($stmt);
+                }
             }
         }
     }
@@ -208,7 +248,7 @@ $cari = trim($_GET['cari'] ?? '');
 
 $where = "";
 
-if ($cari != '') {
+if ($cari !== '') {
 
     $cari_aman = mysqli_real_escape_string($koneksi, $cari);
 
@@ -231,6 +271,10 @@ $query_jumlah = mysqli_query(
      FROM tahun_ajaran
      $where"
 );
+
+if (!$query_jumlah) {
+    die("Gagal menghitung data: " . mysqli_error($koneksi));
+}
 
 $total_data = mysqli_fetch_assoc($query_jumlah)['total'];
 
@@ -264,7 +308,6 @@ if (!$data) {
 <html lang="id">
 
 <head>
-
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -273,7 +316,6 @@ if (!$data) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <style>
-
         body {
             margin: 0;
             background: #f4f6f8;
@@ -359,7 +401,6 @@ if (!$data) {
         }
 
         @media(max-width: 700px) {
-
             .sidebar {
                 position: relative;
                 width: 100%;
@@ -371,9 +412,7 @@ if (!$data) {
                 padding: 15px;
             }
         }
-
     </style>
-
 </head>
 
 <body>
@@ -407,23 +446,17 @@ if (!$data) {
 <div class="content">
 
     <div class="header-box">
-
         <h1>Tahun Ajaran</h1>
-
         <p>Kelola data tahun ajaran sekolah.</p>
-
     </div>
 
-    <?php if ($error != '') { ?>
-
+    <?php if ($error !== '') { ?>
         <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
         </div>
-
     <?php } ?>
 
     <div class="card shadow-sm mb-4">
-
         <div class="card-body">
 
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -496,13 +529,11 @@ if (!$data) {
                     <tbody>
 
                     <?php
-
                     $no = $mulai + 1;
 
                     if (mysqli_num_rows($data) > 0) {
 
                         while ($row = mysqli_fetch_assoc($data)) {
-
                     ?>
 
                         <tr>
@@ -549,33 +580,46 @@ if (!$data) {
 
                                 </a>
 
-                                <a
-                                    href="kelola_tahun_ajaran.php?hapus=<?= $row['id']; ?>"
-                                    class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Yakin ingin menghapus tahun ajaran ini?')">
+                                <form
+                                    method="POST"
+                                    style="display:inline;"
+                                    onsubmit="return confirm('Yakin ingin menghapus tahun ajaran ini?')">
 
-                                    Hapus
+                                    <input
+                                        type="hidden"
+                                        name="csrf_token"
+                                        value="<?= htmlspecialchars($csrf_token); ?>">
 
-                                </a>
+                                    <input
+                                        type="hidden"
+                                        name="id"
+                                        value="<?= $row['id']; ?>">
+
+                                    <button
+                                        type="submit"
+                                        name="hapus"
+                                        class="btn btn-sm btn-danger">
+
+                                        Hapus
+
+                                    </button>
+
+                                </form>
 
                             </td>
 
                         </tr>
 
                     <?php
-
                         }
 
                     } else {
-
                     ?>
 
                         <tr>
-
                             <td colspan="6" class="text-center">
                                 Data tahun ajaran tidak ditemukan.
                             </td>
-
                         </tr>
 
                     <?php } ?>
@@ -617,7 +661,6 @@ if (!$data) {
             <?php } ?>
 
         </div>
-
     </div>
 
     <!-- FORM TAMBAH -->
@@ -629,6 +672,11 @@ if (!$data) {
             <h5 class="mb-3">Tambah Tahun Ajaran</h5>
 
             <form method="POST">
+
+                <input
+                    type="hidden"
+                    name="csrf_token"
+                    value="<?= htmlspecialchars($csrf_token); ?>">
 
                 <div class="row g-3">
 

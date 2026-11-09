@@ -1,23 +1,19 @@
 
 <?php
-session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
-include "database.php";
+require_once "database.php";
+require_once "auth.php";
 
-$role = $_SESSION['role'] ?? '';
+hanyaRole(['admin']);
 
-if ($role != 'admin') {
-    echo "Akses ditolak.";
-    exit;
-}
-
-$tambah = isset($_GET['tambah']) && $_GET['tambah'] == '1';
 $error = "";
+$tambah = isset($_GET['tambah']) && $_GET['tambah'] == '1';
 
 /* =========================
    TAMBAH DATA SISWA
@@ -31,45 +27,31 @@ if (isset($_POST['simpan'])) {
     $alamat        = trim($_POST['alamat'] ?? '');
     $no_hp_ortu    = trim($_POST['no_hp_ortu'] ?? '');
 
-    if ($nis == '' || $nisn == '' || $nama == '') {
+    $tambah = true;
+
+    if ($nis === '' || $nisn === '' || $nama === '') {
         $error = "NIS, NISN, dan nama wajib diisi.";
-        $tambah = true;
 
     } elseif (!ctype_digit($nis) || strlen($nis) > 15) {
         $error = "NIS hanya boleh angka dan maksimal 15 digit.";
-        $tambah = true;
 
     } elseif (!ctype_digit($nisn) || strlen($nisn) > 10) {
         $error = "NISN hanya boleh angka dan maksimal 10 digit.";
-        $tambah = true;
 
     } else {
 
         $stmt = mysqli_prepare(
             $koneksi,
-            "SELECT id FROM siswa WHERE nis = ? LIMIT 1"
+            "SELECT id FROM siswa WHERE nis = ? OR nisn = ? LIMIT 1"
         );
 
-        mysqli_stmt_bind_param($stmt, "s", $nis);
+        mysqli_stmt_bind_param($stmt, "ss", $nis, $nisn);
         mysqli_stmt_execute($stmt);
-        $cek_nis = mysqli_stmt_get_result($stmt);
 
-        $stmt_nisn = mysqli_prepare(
-            $koneksi,
-            "SELECT id FROM siswa WHERE nisn = ? LIMIT 1"
-        );
+        $cek = mysqli_stmt_get_result($stmt);
 
-        mysqli_stmt_bind_param($stmt_nisn, "s", $nisn);
-        mysqli_stmt_execute($stmt_nisn);
-        $cek_nisn = mysqli_stmt_get_result($stmt_nisn);
-
-        if (mysqli_num_rows($cek_nis) > 0) {
-            $error = "NIS tersebut sudah digunakan.";
-            $tambah = true;
-
-        } elseif (mysqli_num_rows($cek_nisn) > 0) {
-            $error = "NISN tersebut sudah digunakan.";
-            $tambah = true;
+        if (mysqli_num_rows($cek) > 0) {
+            $error = "NIS atau NISN tersebut sudah digunakan.";
 
         } else {
 
@@ -94,20 +76,19 @@ if (isset($_POST['simpan'])) {
             if (mysqli_stmt_execute($stmt_insert)) {
                 mysqli_stmt_close($stmt_insert);
                 mysqli_stmt_close($stmt);
-                mysqli_stmt_close($stmt_nisn);
 
                 header("Location: kelola_siswa.php");
                 exit;
+
             } else {
-                $error = "Gagal menambahkan siswa: " . mysqli_error($koneksi);
-                $tambah = true;
+                $error = "Gagal menambahkan siswa: " .
+                    mysqli_stmt_error($stmt_insert);
             }
 
             mysqli_stmt_close($stmt_insert);
         }
 
         mysqli_stmt_close($stmt);
-        mysqli_stmt_close($stmt_nisn);
     }
 }
 
@@ -128,15 +109,18 @@ if (isset($_GET['hapus'])) {
         mysqli_stmt_bind_param($stmt, "i", $id);
 
         if (mysqli_stmt_execute($stmt)) {
+
             mysqli_stmt_close($stmt);
 
             header("Location: kelola_siswa.php");
             exit;
-        } else {
-            $error = "Data tidak bisa dihapus. Mungkin masih digunakan pada data pelanggaran atau penempatan siswa.";
-        }
 
-        mysqli_stmt_close($stmt);
+        } else {
+
+            $error = "Data tidak bisa dihapus. Siswa mungkin masih digunakan pada data pelanggaran atau penempatan siswa.";
+
+            mysqli_stmt_close($stmt);
+        }
     }
 }
 
@@ -149,17 +133,17 @@ $cari = trim($_GET['cari'] ?? '');
    PAGINATION
 ========================= */
 $batas = 10;
-$halaman = isset($_GET['halaman']) ? (int) $_GET['halaman'] : 1;
 
-if ($halaman < 1) {
-    $halaman = 1;
-}
+$halaman = isset($_GET['halaman'])
+    ? max(1, (int) $_GET['halaman'])
+    : 1;
 
 $mulai = ($halaman - 1) * $batas;
 
-if ($cari != '') {
+/* HITUNG TOTAL DATA */
+if ($cari !== '') {
 
-    $keyword = "%" . $cari . "%";
+    $keyword = "%{$cari}%";
 
     $stmt_total = mysqli_prepare(
         $koneksi,
@@ -179,8 +163,28 @@ if ($cari != '') {
     );
 
     mysqli_stmt_execute($stmt_total);
+
     $hasil_total = mysqli_stmt_get_result($stmt_total);
-    $total_data = mysqli_fetch_assoc($hasil_total)['total'];
+
+} else {
+
+    $hasil_total = mysqli_query(
+        $koneksi,
+        "SELECT COUNT(*) AS total FROM siswa"
+    );
+}
+
+$total_data = (int) mysqli_fetch_assoc($hasil_total)['total'];
+
+$total_halaman = max(1, (int) ceil($total_data / $batas));
+
+if ($halaman > $total_halaman) {
+    $halaman = $total_halaman;
+    $mulai = ($halaman - 1) * $batas;
+}
+
+/* AMBIL DATA SISWA */
+if ($cari !== '') {
 
     $stmt_data = mysqli_prepare(
         $koneksi,
@@ -204,17 +208,7 @@ if ($cari != '') {
         $mulai
     );
 
-    mysqli_stmt_execute($stmt_data);
-    $data = mysqli_stmt_get_result($stmt_data);
-
 } else {
-
-    $hasil_total = mysqli_query(
-        $koneksi,
-        "SELECT COUNT(*) AS total FROM siswa"
-    );
-
-    $total_data = mysqli_fetch_assoc($hasil_total)['total'];
 
     $stmt_data = mysqli_prepare(
         $koneksi,
@@ -231,21 +225,15 @@ if ($cari != '') {
         $batas,
         $mulai
     );
-
-    mysqli_stmt_execute($stmt_data);
-    $data = mysqli_stmt_get_result($stmt_data);
 }
 
-$total_halaman = max(1, ceil($total_data / $batas));
+mysqli_stmt_execute($stmt_data);
+$data = mysqli_stmt_get_result($stmt_data);
 
-if ($halaman > $total_halaman) {
-    $halaman = $total_halaman;
-}
-
-/* Fungsi URL pagination */
+/* URL PAGINATION */
 function urlHalamanSiswa($halaman, $cari) {
     return "kelola_siswa.php?halaman=" . $halaman .
-           "&cari=" . urlencode($cari);
+        "&cari=" . urlencode($cari);
 }
 ?>
 
@@ -254,6 +242,7 @@ function urlHalamanSiswa($halaman, $cari) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Data Siswa</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -281,6 +270,7 @@ function urlHalamanSiswa($halaman, $cari) {
             background: #687280;
             padding: 20px 12px;
             overflow-y: auto;
+            z-index: 1000;
         }
 
         .sidebar-title {
@@ -291,24 +281,25 @@ function urlHalamanSiswa($halaman, $cari) {
             line-height: 1.4;
         }
 
-        .sidebar a {
+        .sidebar .nav-link {
             display: block;
+            color: white;
+            font-size: 14px;
             padding: 11px 13px;
             margin-bottom: 5px;
-            color: white;
-            text-decoration: none;
             border-radius: 5px;
-            font-size: 14px;
+            text-decoration: none;
         }
 
-        .sidebar a:hover,
-        .sidebar a.active {
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
             background: #4f5965;
+            color: white;
         }
 
         .sidebar .logout {
-            margin-top: 20px;
             background: #b42323;
+            margin-top: 20px;
         }
 
         .sidebar .logout:hover {
@@ -319,52 +310,52 @@ function urlHalamanSiswa($halaman, $cari) {
         .content {
             margin-left: 220px;
             padding: 30px;
+            min-height: 100vh;
         }
 
-        .card {
-            border: 1px solid #dddddd;
-            border-radius: 6px;
-            margin-bottom: 15px;
+        .header-box,
+        .main-box {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 7px;
+            padding: 20px;
+            margin-bottom: 20px;
         }
 
-        .card-body {
-            padding: 16px;
-        }
-
-        /* TOMBOL TAMBAH */
-        .btn-stabilo {
-            background: #9dff00;
-            color: #1a3300;
+        .header-box h1 {
+            font-size: 24px;
             font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        /* TOMBOL */
+        .btn-tambah {
+            background: #198754;
+            color: white;
             border: none;
         }
 
-        .btn-stabilo:hover {
-            background: #86e000;
-            color: #1a3300;
+        .btn-tambah:hover {
+            background: #146c43;
+            color: white;
         }
 
         /* TABEL */
         .table {
-            font-size: 12px;
+            font-size: 13px;
             margin-bottom: 0;
-        }
-
-        .table thead th {
-            background: #dedede;
-            color: #111;
-            font-weight: bold;
-            border-bottom: 1px solid #bbb;
-        }
-
-        .table td,
-        .table th {
-            padding: 8px;
             vertical-align: middle;
         }
 
-        .table tbody tr:hover {
-            background: #f8f9fa;
+        .table thead th {
+            background: #687280;
+            color: white;
+            padding: 11px 8px;
+            white-space: nowrap;
+        }
+
+        .table tbody td {
+            padding: 10px 8px;
         }
 
         /* PAGINATION */
@@ -379,7 +370,7 @@ function urlHalamanSiswa($halaman, $cari) {
         }
 
         /* LAYAR KECIL */
-        @media(max-width: 700px) {
+        @media (max-width: 700px) {
             .sidebar {
                 position: relative;
                 width: 100%;
@@ -397,209 +388,262 @@ function urlHalamanSiswa($halaman, $cari) {
 <body>
 
 <!-- SIDEBAR -->
-<div class="sidebar">
+<aside class="sidebar">
 
     <div class="sidebar-title">
         ⚖ Pelanggaran<br>Siswa
     </div>
 
-    <a href="dashboard.php">🏠 Dashboard</a>
-    <a href="kelola_siswa.php" class="active">Data Siswa</a>
-    <a href="kelola_guru.php">Data Guru</a>
-    <a href="kelola_kelas.php">Data Kelas</a>
-    <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
-    <a href="kelola_wali_kelas.php">Wali Kelas</a>
-    <a href="penempatan_siswa.php">Penempatan Siswa</a>
-    <a href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a>
-    <a href="pelanggaran.php">Data Pelanggaran</a>
-    <a href="tindakan.php">Data Tindakan</a>
-    <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">ℹ About Me</a>
+    <nav class="nav flex-column">
 
-    <a href="logout.php" class="logout">🚪 Logout</a>
+        <a href="dashboard.php" class="nav-link">
+            🏠 Dashboard
+        </a>
 
-</div>
+        <a href="kelola_siswa.php" class="nav-link active">
+            Data Siswa
+        </a>
+
+        <a href="kelola_guru.php" class="nav-link">
+            Data Guru
+        </a>
+
+        <a href="kelola_kelas.php" class="nav-link">
+            Data Kelas
+        </a>
+
+        <a href="kelola_tahun_ajaran.php" class="nav-link">
+            Tahun Ajaran
+        </a>
+
+        <a href="kelola_wali_kelas.php" class="nav-link">
+            Wali Kelas
+        </a>
+
+        <a href="penempatan_siswa.php" class="nav-link">
+            Penempatan Siswa
+        </a>
+
+        <a href="kelola_pelanggaran_kategori.php" class="nav-link">
+            ⚠ Kategori Pelanggaran
+        </a>
+
+        <a href="pelanggaran.php" class="nav-link">
+            Data Pelanggaran
+        </a>
+
+        <a href="tindakan.php" class="nav-link">
+            Data Tindakan
+        </a>
+
+        <a href="riwayat.php" class="nav-link">
+            Riwayat
+        </a>
+
+        <a href="rekap_poin.php" class="nav-link">
+            Rekap Poin
+        </a>
+
+        <a href="laporan.php" class="nav-link">
+            Laporan
+        </a>
+
+        <a href="about_me.php" class="nav-link">
+            ℹ About Me
+        </a>
+
+        <a href="logout.php" class="nav-link logout">
+            🚪 Logout
+        </a>
+
+    </nav>
+</aside>
 
 <!-- KONTEN -->
-<div class="content">
+<main class="content">
 
-    <div class="card">
-        <div class="card-body">
-            <h1 class="h4 mb-1">Data Siswa</h1>
-            <p class="text-muted mb-0">Kelola data siswa dalam sistem.</p>
-        </div>
+    <div class="header-box">
+        <h1>Data Siswa</h1>
+        <p class="text-secondary mb-0">
+            Kelola data siswa dalam sistem.
+        </p>
     </div>
 
-    <?php if ($error != "") { ?>
+    <?php if ($error !== ''): ?>
         <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
         </div>
-    <?php } ?>
+    <?php endif; ?>
 
     <!-- FORM TAMBAH -->
-    <?php if ($tambah) { ?>
+    <?php if ($tambah): ?>
 
-        <div class="card">
-            <div class="card-body">
+        <div class="main-box">
 
-                <h2 class="h5 mb-3">Tambah Data Siswa</h2>
+            <h5 class="mb-3">Tambah Data Siswa</h5>
 
-                <form method="POST">
-                    <div class="row g-3">
+            <form method="POST">
 
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">NIS</label>
-                            <input
-                                type="text"
-                                name="nis"
-                                class="form-control"
-                                placeholder="Masukkan NIS"
-                                maxlength="15"
-                                inputmode="numeric"
-                                pattern="[0-9]{1,15}"
-                                title="NIS hanya angka, maksimal 15 digit."
-                                oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 15)"
-                                required
-                            >
-                        </div>
+                <div class="row g-3">
 
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">NISN</label>
-                            <input
-                                type="text"
-                                name="nisn"
-                                class="form-control"
-                                placeholder="Masukkan NISN (maksimal 10 digit)"
-                                maxlength="10"
-                                inputmode="numeric"
-                                pattern="[0-9]{1,10}"
-                                title="NISN hanya boleh angka dan maksimal 10 digit."
-                                oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10)"
-                                required
-                            >
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Nama</label>
-                            <input
-                                type="text"
-                                name="nama"
-                                class="form-control"
-                                placeholder="Masukkan nama siswa"
-                                required
-                            >
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Jenis Kelamin</label>
-                            <select name="jenis_kelamin" class="form-select">
-                                <option value="">-- Pilih --</option>
-                                <option value="L">Laki-laki</option>
-                                <option value="P">Perempuan</option>
-                            </select>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">No HP Orang Tua</label>
-                            <input
-                                type="text"
-                                name="no_hp_ortu"
-                                class="form-control"
-                                placeholder="Masukkan nomor HP"
-                            >
-                        </div>
-
-                        <div class="col-12">
-                            <label class="form-label fw-bold">Alamat</label>
-                            <textarea
-                                name="alamat"
-                                rows="3"
-                                class="form-control"
-                                placeholder="Masukkan alamat"
-                            ></textarea>
-                        </div>
-
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">NIS</label>
+                        <input
+                            type="text"
+                            name="nis"
+                            class="form-control"
+                            placeholder="Masukkan NIS"
+                            maxlength="15"
+                            inputmode="numeric"
+                            pattern="[0-9]{1,15}"
+                            oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,15)"
+                            required
+                        >
                     </div>
 
-                    <div class="mt-3">
-                        <button type="submit" name="simpan" class="btn btn-secondary">
-                            Simpan Siswa
-                        </button>
-
-                        <a href="kelola_siswa.php" class="btn btn-outline-secondary">
-                            Batal
-                        </a>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">NISN</label>
+                        <input
+                            type="text"
+                            name="nisn"
+                            class="form-control"
+                            placeholder="Masukkan NISN"
+                            maxlength="10"
+                            inputmode="numeric"
+                            pattern="[0-9]{1,10}"
+                            oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,10)"
+                            required
+                        >
                     </div>
-                </form>
 
-            </div>
-        </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Nama Siswa</label>
+                        <input
+                            type="text"
+                            name="nama"
+                            class="form-control"
+                            placeholder="Masukkan nama siswa"
+                            required
+                        >
+                    </div>
 
-    <?php } ?>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Jenis Kelamin</label>
+                        <select name="jenis_kelamin" class="form-select">
+                            <option value="">-- Pilih Jenis Kelamin --</option>
+                            <option value="L">Laki-laki</option>
+                            <option value="P">Perempuan</option>
+                        </select>
+                    </div>
 
-    <!-- DAFTAR SISWA -->
-    <div class="card">
-        <div class="card-body">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">No HP Orang Tua</label>
+                        <input
+                            type="text"
+                            name="no_hp_ortu"
+                            class="form-control"
+                            placeholder="Masukkan nomor HP orang tua"
+                        >
+                    </div>
 
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div class="col-12">
+                        <label class="form-label fw-bold">Alamat</label>
+                        <textarea
+                            name="alamat"
+                            class="form-control"
+                            rows="3"
+                            placeholder="Masukkan alamat siswa"
+                        ></textarea>
+                    </div>
 
-                <h2 class="h5 mb-0">Daftar Siswa</h2>
-
-                <?php if (!$tambah) { ?>
-                    <a href="kelola_siswa.php?tambah=1" class="btn btn-sm btn-stabilo">
-                        + Tambah Siswa
-                    </a>
-                <?php } ?>
-
-            </div>
-
-            <!-- PENCARIAN -->
-            <form method="GET" class="row g-2 mb-3">
-
-                <div class="col-md-5">
-                    <input
-                        type="text"
-                        name="cari"
-                        class="form-control form-control-sm"
-                        placeholder="Cari NIS, NISN, atau nama siswa..."
-                        value="<?= htmlspecialchars($cari); ?>"
-                    >
                 </div>
 
-                <div class="col-auto">
-                    <button type="submit" class="btn btn-sm btn-secondary">
-                        Cari
+                <div class="mt-3">
+
+                    <button
+                        type="submit"
+                        name="simpan"
+                        class="btn btn-success"
+                    >
+                        Simpan Siswa
                     </button>
 
-                    <a href="kelola_siswa.php" class="btn btn-sm btn-outline-secondary">
-                        Reset
+                    <a href="kelola_siswa.php" class="btn btn-secondary">
+                        Batal
                     </a>
+
                 </div>
 
             </form>
 
-            <div class="table-responsive">
-                <table class="table table-bordered table-hover align-middle">
+        </div>
 
-                    <thead>
-                        <tr>
-                            <th width="5%">No</th>
-                            <th width="12%">NIS</th>
-                            <th width="12%">NISN</th>
-                            <th width="20%">Nama</th>
-                            <th width="7%">JK</th>
-                            <th width="22%">No HP Orang Tua</th>
-                            <th width="22%">Aksi</th>
-                        </tr>
-                    </thead>
+    <?php endif; ?>
 
-                    <tbody>
+    <!-- DAFTAR SISWA -->
+    <div class="main-box">
+
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+
+            <h5 class="mb-0">Daftar Siswa</h5>
+
+            <?php if (!$tambah): ?>
+                <a href="kelola_siswa.php?tambah=1" class="btn btn-tambah btn-sm">
+                    + Tambah Siswa
+                </a>
+            <?php endif; ?>
+
+        </div>
+
+        <!-- PENCARIAN -->
+        <form method="GET" class="row g-2 mb-3">
+
+            <div class="col-md-5">
+                <input
+                    type="text"
+                    name="cari"
+                    class="form-control form-control-sm"
+                    placeholder="Cari NIS, NISN, atau nama siswa..."
+                    value="<?= htmlspecialchars($cari); ?>"
+                >
+            </div>
+
+            <div class="col-auto">
+                <button type="submit" class="btn btn-secondary btn-sm">
+                    Cari
+                </button>
+
+                <a href="kelola_siswa.php" class="btn btn-outline-secondary btn-sm">
+                    Reset
+                </a>
+            </div>
+
+        </form>
+
+        <!-- TABEL -->
+        <div class="table-responsive">
+
+            <table class="table table-bordered table-hover">
+
+                <thead>
+                    <tr>
+                        <th width="5%">No</th>
+                        <th>NIS</th>
+                        <th>NISN</th>
+                        <th>Nama Siswa</th>
+                        <th>JK</th>
+                        <th>No HP Orang Tua</th>
+                        <th width="15%">Aksi</th>
+                    </tr>
+                </thead>
+
+                <tbody>
 
                     <?php
                     $no = $mulai + 1;
 
-                    if ($data && mysqli_num_rows($data) > 0) {
-                        while ($row = mysqli_fetch_assoc($data)) {
+                    if ($data && mysqli_num_rows($data) > 0):
+                        while ($row = mysqli_fetch_assoc($data)):
                     ?>
 
                         <tr>
@@ -614,7 +658,9 @@ function urlHalamanSiswa($halaman, $cari) {
                             </td>
 
                             <td>
-                                <b><?= htmlspecialchars($row['nama']); ?></b>
+                                <strong>
+                                    <?= htmlspecialchars($row['nama']); ?>
+                                </strong>
                             </td>
 
                             <td>
@@ -627,21 +673,25 @@ function urlHalamanSiswa($halaman, $cari) {
 
                             <td>
                                 <a
-                                    class="btn btn-sm btn-stabilo"
                                     href="edit_siswa.php?id=<?= (int)$row['id']; ?>"
-                                >Edit</a>
+                                    class="btn btn-success btn-sm"
+                                >
+                                    Edit
+                                </a>
 
                                 <a
-                                    class="btn btn-sm btn-danger"
                                     href="kelola_siswa.php?hapus=<?= (int)$row['id']; ?>"
-                                    onclick="return confirm('Hapus data siswa ini?')"
-                                >Hapus</a>
+                                    class="btn btn-danger btn-sm"
+                                    onclick="return confirm('Yakin ingin menghapus siswa ini?')"
+                                >
+                                    Hapus
+                                </a>
                             </td>
                         </tr>
 
                     <?php
-                        }
-                    } else {
+                        endwhile;
+                    else:
                     ?>
 
                         <tr>
@@ -650,68 +700,77 @@ function urlHalamanSiswa($halaman, $cari) {
                             </td>
                         </tr>
 
-                    <?php } ?>
+                    <?php endif; ?>
 
-                    </tbody>
+                </tbody>
 
-                </table>
-            </div>
-
-            <!-- INFORMASI DATA -->
-            <div class="d-flex justify-content-between align-items-center flex-wrap mt-3">
-
-                <small class="text-muted">
-                    Menampilkan <?= $total_data > 0 ? $mulai + 1 : 0; ?>
-                    sampai <?= min($mulai + $batas, $total_data); ?>
-                    dari <?= $total_data; ?> data siswa
-                </small>
-
-                <!-- PAGINATION -->
-                <?php if ($total_halaman > 1) { ?>
-
-                    <nav>
-                        <ul class="pagination pagination-sm mb-0">
-
-                            <?php if ($halaman > 1) { ?>
-                                <li class="page-item">
-                                    <a class="page-link"
-                                       href="<?= urlHalamanSiswa($halaman - 1, $cari); ?>">
-                                        Sebelumnya
-                                    </a>
-                                </li>
-                            <?php } ?>
-
-                            <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
-
-                                <li class="page-item <?= ($i == $halaman) ? 'active' : ''; ?>">
-                                    <a class="page-link"
-                                       href="<?= urlHalamanSiswa($i, $cari); ?>">
-                                        <?= $i; ?>
-                                    </a>
-                                </li>
-
-                            <?php } ?>
-
-                            <?php if ($halaman < $total_halaman) { ?>
-                                <li class="page-item">
-                                    <a class="page-link"
-                                       href="<?= urlHalamanSiswa($halaman + 1, $cari); ?>">
-                                        Berikutnya
-                                    </a>
-                                </li>
-                            <?php } ?>
-
-                        </ul>
-                    </nav>
-
-                <?php } ?>
-
-            </div>
+            </table>
 
         </div>
+
+        <!-- INFORMASI DAN PAGINATION -->
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+
+            <small class="text-secondary">
+                Menampilkan
+                <?= $total_data > 0 ? $mulai + 1 : 0; ?>
+                sampai
+                <?= min($mulai + $batas, $total_data); ?>
+                dari <?= $total_data; ?> data siswa
+            </small>
+
+            <?php if ($total_halaman > 1): ?>
+
+                <nav>
+                    <ul class="pagination pagination-sm mb-0">
+
+                        <?php if ($halaman > 1): ?>
+                            <li class="page-item">
+                                <a
+                                    class="page-link"
+                                    href="<?= urlHalamanSiswa($halaman - 1, $cari); ?>"
+                                >
+                                    Sebelumnya
+                                </a>
+                            </li>
+                        <?php endif; ?>
+
+                        <?php for ($i = 1; $i <= $total_halaman; $i++): ?>
+
+                            <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
+                                <a
+                                    class="page-link"
+                                    href="<?= urlHalamanSiswa($i, $cari); ?>"
+                                >
+                                    <?= $i; ?>
+                                </a>
+                            </li>
+
+                        <?php endfor; ?>
+
+                        <?php if ($halaman < $total_halaman): ?>
+                            <li class="page-item">
+                                <a
+                                    class="page-link"
+                                    href="<?= urlHalamanSiswa($halaman + 1, $cari); ?>"
+                                >
+                                    Berikutnya
+                                </a>
+                            </li>
+                        <?php endif; ?>
+
+                    </ul>
+                </nav>
+
+            <?php endif; ?>
+
+        </div>
+
     </div>
 
-</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 </body>
 </html>

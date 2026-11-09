@@ -46,7 +46,6 @@ if (isset($_POST['simpan'])) {
         $nip_ada = false;
 
         if ($nip != '') {
-
             $stmt = mysqli_prepare(
                 $koneksi,
                 "SELECT id FROM guru WHERE nip = ? LIMIT 1"
@@ -71,7 +70,9 @@ if (isset($_POST['simpan'])) {
             // CEK EMAIL / USERNAME
             $stmt = mysqli_prepare(
                 $koneksi,
-                "SELECT id FROM users WHERE email = ? OR username = ? LIMIT 1"
+                "SELECT id FROM users
+                 WHERE email = ? OR username = ?
+                 LIMIT 1"
             );
 
             mysqli_stmt_bind_param($stmt, "ss", $email, $email);
@@ -103,14 +104,16 @@ if (isset($_POST['simpan'])) {
 
             } else {
 
-                // HASH PASSWORD
-                $password_hash = password_hash($password, PASSWORD_DEFAULT);
+                $password_hash = password_hash(
+                    $password,
+                    PASSWORD_DEFAULT
+                );
 
                 mysqli_begin_transaction($koneksi);
 
                 try {
 
-                    // MEMBUAT AKUN LOGIN GURU
+                    // BUAT AKUN LOGIN GURU
                     $stmt_user = mysqli_prepare(
                         $koneksi,
                         "INSERT INTO users
@@ -133,7 +136,7 @@ if (isset($_POST['simpan'])) {
 
                     mysqli_stmt_close($stmt_user);
 
-                    // MENYIMPAN DATA GURU
+                    // SIMPAN DATA GURU
                     $nip_db = ($nip == '') ? null : $nip;
                     $no_hp_db = ($no_hp == '') ? null : $no_hp;
 
@@ -201,6 +204,7 @@ if (isset($_GET['hapus'])) {
 
         if ($guru_hapus) {
 
+            // CEK DATA PELANGGARAN
             $stmt = mysqli_prepare(
                 $koneksi,
                 "SELECT COUNT(*) AS total
@@ -226,6 +230,7 @@ if (isset($_GET['hapus'])) {
 
                 try {
 
+                    // HAPUS DATA GURU
                     $stmt = mysqli_prepare(
                         $koneksi,
                         "DELETE FROM guru WHERE id = ?"
@@ -239,9 +244,11 @@ if (isset($_GET['hapus'])) {
 
                     mysqli_stmt_close($stmt);
 
+                    // HAPUS AKUN LOGIN GURU
                     $stmt = mysqli_prepare(
                         $koneksi,
-                        "DELETE FROM users WHERE email = ? AND role = 'guru'"
+                        "DELETE FROM users
+                         WHERE email = ? AND role = 'guru'"
                     );
 
                     mysqli_stmt_bind_param(
@@ -277,7 +284,7 @@ if (isset($_GET['hapus'])) {
    PENCARIAN
 ========================= */
 
-$search = trim($_GET['search'] ?? '');
+$search = trim($_GET['cari'] ?? '');
 $cari = "%$search%";
 
 
@@ -285,7 +292,7 @@ $cari = "%$search%";
    PAGINATION
 ========================= */
 
-$per_halaman = 5;
+$per_halaman = 10;
 
 $halaman = max(1, (int)($_GET['halaman'] ?? 1));
 
@@ -342,7 +349,7 @@ if ($search != '') {
          OR nama LIKE ?
          OR email LIKE ?
          OR no_hp LIKE ?
-         ORDER BY nama ASC
+         ORDER BY id DESC
          LIMIT ?, ?"
     );
 
@@ -361,7 +368,7 @@ if ($search != '') {
     $stmt = $koneksi->prepare(
         "SELECT id, nip, nama, email, no_hp
          FROM guru
-         ORDER BY nama ASC
+         ORDER BY id DESC
          LIMIT ?, ?"
     );
 
@@ -377,7 +384,6 @@ $data = $stmt->get_result();
 <html lang="id">
 
 <head>
-
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -388,27 +394,78 @@ $data = $stmt->get_result();
 <style>
 
 body {
+    margin: 0;
     background: #f4f6f8;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    color: #212529;
 }
+
+/* SIDEBAR */
 
 .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
     width: 220px;
+    height: 100vh;
     background: #687280;
+    padding: 20px 12px;
+    overflow-y: auto;
 }
 
-.sidebar .nav-link {
+.sidebar-title {
     color: white;
+    font-size: 19px;
+    font-weight: bold;
+    margin: 0 8px 25px;
+    line-height: 1.4;
+}
+
+.sidebar a {
+    display: block;
+    padding: 11px 13px;
+    margin-bottom: 5px;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
     font-size: 14px;
 }
 
-.sidebar .nav-link:hover,
-.sidebar .nav-link.active {
+.sidebar a:hover,
+.sidebar a.active {
     background: #4f5965;
 }
 
+.sidebar .logout {
+    margin-top: 20px;
+    background: #b42323;
+}
+
+.sidebar .logout:hover {
+    background: #941d1d;
+}
+
+/* CONTENT */
+
 .content {
     margin-left: 220px;
+    padding: 30px;
 }
+
+/* PANEL */
+
+.card {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: none;
+}
+
+.card-body {
+    padding: 20px;
+}
+
+/* BUTTON */
 
 .btn-stabilo {
     background: #9dff00;
@@ -422,15 +479,44 @@ body {
     color: #1a3300;
 }
 
+/* TABLE */
+
+.table {
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+.table th,
+.table td {
+    padding: 10px;
+    vertical-align: middle;
+}
+
+/* PAGINATION */
+
+.page-link {
+    color: #687280;
+}
+
+.page-item.active .page-link {
+    background: #687280;
+    border-color: #687280;
+    color: white;
+}
+
+/* RESPONSIVE */
+
 @media (max-width: 700px) {
+
     .sidebar {
-        position: static !important;
+        position: relative;
         width: 100%;
-        height: auto !important;
+        height: auto;
     }
 
     .content {
         margin-left: 0;
+        padding: 15px;
     }
 }
 
@@ -442,46 +528,40 @@ body {
 
 <!-- SIDEBAR -->
 
-<div class="sidebar position-fixed top-0 start-0 vh-100 overflow-auto p-3">
+<div class="sidebar">
 
-    <h5 class="text-white fw-bold mb-4 px-2">
+    <div class="sidebar-title">
         ⚖ Pelanggaran<br>Siswa
-    </h5>
+    </div>
 
-    <ul class="nav flex-column gap-1">
+    <a href="dashboard.php">🏠 Dashboard</a>
+    <a href="kelola_siswa.php">Data Siswa</a>
+    <a href="kelola_guru.php" class="active">Data Guru</a>
+    <a href="kelola_kelas.php">Data Kelas</a>
+    <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
+    <a href="kelola_wali_kelas.php">Wali Kelas</a>
+    <a href="penempatan_siswa.php">Penempatan Siswa</a>
+    <a href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a>
+    <a href="pelanggaran.php">Data Pelanggaran</a>
+    <a href="tindakan.php">Data Tindakan</a>
+    <a href="laporan.php">Laporan</a>
+    <a href="about_me.php">ℹ About Me</a>
 
-        <li><a class="nav-link" href="dashboard.php">🏠 Dashboard</a></li>
-        <li><a class="nav-link" href="kelola_siswa.php">Data Siswa</a></li>
-        <li><a class="nav-link active" href="kelola_guru.php">Data Guru</a></li>
-        <li><a class="nav-link" href="kelola_kelas.php">Data Kelas</a></li>
-        <li><a class="nav-link" href="kelola_tahun_ajaran.php">Tahun Ajaran</a></li>
-        <li><a class="nav-link" href="kelola_wali_kelas.php">Wali Kelas</a></li>
-        <li><a class="nav-link" href="penempatan_siswa.php">Penempatan Siswa</a></li>
-        <li><a class="nav-link" href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a></li>
-        <li><a class="nav-link" href="pelanggaran.php">Data Pelanggaran</a></li>
-        <li><a class="nav-link" href="tindakan.php">Data Tindakan</a></li>
-        <li><a class="nav-link" href="laporan.php">Laporan</a></li>
-        <li><a class="nav-link" href="about_me.php">ℹ About Me</a></li>
-
-    </ul>
-
-    <a href="logout.php" class="btn btn-danger w-100 mt-4 text-start">
-        🚪 Logout
-    </a>
+    <a href="logout.php" class="logout">🚪 Logout</a>
 
 </div>
 
 
 <!-- CONTENT -->
 
-<div class="content p-4">
+<div class="content">
 
     <!-- HEADER -->
 
     <div class="card mb-3">
         <div class="card-body">
 
-            <h1 class="h3 mb-1">Data Guru</h1>
+            <h4 class="mb-1">Data Guru</h4>
 
             <p class="text-muted mb-0">
                 Kelola data guru dan akun login guru.
@@ -507,10 +587,9 @@ body {
     <?php if ($tampil_form) { ?>
 
         <div class="card mb-3">
-
             <div class="card-body">
 
-                <h2 class="h5 mb-3">Tambah Data Guru</h2>
+                <h5 class="mb-3">Tambah Data Guru</h5>
 
                 <form method="POST">
 
@@ -518,48 +597,83 @@ body {
 
                         <div class="col-md-6">
                             <label class="form-label fw-bold">NIP</label>
-                            <input type="text" name="nip" class="form-control"
-                                   placeholder="Masukkan NIP"
-                                   maxlength="18"
-                                   inputmode="numeric"
-                                   pattern="[0-9]{1,18}"
-                                   title="NIP hanya boleh angka dan maksimal 18 digit."
-                                   oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 18)">
+
+                            <input
+                                type="text"
+                                name="nip"
+                                class="form-control"
+                                placeholder="Masukkan NIP"
+                                maxlength="18"
+                                inputmode="numeric"
+                                pattern="[0-9]{1,18}"
+                                title="NIP hanya boleh angka dan maksimal 18 digit."
+                                oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 18)"
+                            >
                         </div>
 
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Nama Guru</label>
-                            <input type="text" name="nama" class="form-control"
-                                   placeholder="Masukkan nama guru" required>
+
+                            <input
+                                type="text"
+                                name="nama"
+                                class="form-control"
+                                placeholder="Masukkan nama guru"
+                                required
+                            >
                         </div>
 
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Gmail</label>
-                            <input type="email" name="email" class="form-control"
-                                   placeholder="contoh@gmail.com" required>
+
+                            <input
+                                type="email"
+                                name="email"
+                                class="form-control"
+                                placeholder="contoh@gmail.com"
+                                required
+                            >
                         </div>
 
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Password Login</label>
-                            <input type="password" name="password" class="form-control"
-                                   placeholder="Masukkan password" required>
+
+                            <input
+                                type="password"
+                                name="password"
+                                class="form-control"
+                                placeholder="Masukkan password"
+                                required
+                            >
                         </div>
 
                         <div class="col-md-6">
                             <label class="form-label fw-bold">No HP</label>
-                            <input type="text" name="no_hp" class="form-control"
-                                   placeholder="Masukkan nomor HP">
+
+                            <input
+                                type="text"
+                                name="no_hp"
+                                class="form-control"
+                                placeholder="Masukkan nomor HP"
+                            >
                         </div>
 
                     </div>
 
                     <div class="mt-3">
 
-                        <button type="submit" name="simpan" class="btn btn-secondary">
+                        <button
+                            type="submit"
+                            name="simpan"
+                            class="btn btn-stabilo btn-sm"
+                        >
                             Simpan Guru
                         </button>
 
-                        <a href="kelola_guru.php" class="btn btn-outline-secondary">
+                        <a
+                            href="kelola_guru.php"
+                            class="btn btn-outline-secondary btn-sm"
+                        >
                             Batal
                         </a>
 
@@ -568,7 +682,6 @@ body {
                 </form>
 
             </div>
-
         </div>
 
     <?php } ?>
@@ -582,11 +695,14 @@ body {
 
             <div class="d-flex justify-content-between align-items-center mb-3">
 
-                <h2 class="h5 mb-0">Daftar Guru</h2>
+                <h5 class="mb-0">Daftar Guru</h5>
 
                 <?php if (!$tampil_form) { ?>
 
-                    <a href="kelola_guru.php?tambah=1" class="btn btn-sm btn-stabilo">
+                    <a
+                        href="kelola_guru.php?tambah=1"
+                        class="btn btn-sm btn-stabilo"
+                    >
                         + Tambah Guru
                     </a>
 
@@ -601,21 +717,28 @@ body {
 
                 <div class="col-md-5">
 
-                    <input type="text" name="search" class="form-control"
-                           placeholder="Cari NIP, nama, Gmail..."
-                           value="<?= htmlspecialchars($search); ?>">
+                    <input
+                        type="text"
+                        name="cari"
+                        class="form-control form-control-sm"
+                        placeholder="Cari NIP, nama, Gmail, atau No HP..."
+                        value="<?= htmlspecialchars($search); ?>"
+                    >
 
                 </div>
 
                 <div class="col-auto">
 
-                    <button type="submit" class="btn btn-secondary">
+                    <button type="submit" class="btn btn-secondary btn-sm">
                         Cari
                     </button>
 
                     <?php if ($search != '') { ?>
 
-                        <a href="kelola_guru.php" class="btn btn-outline-secondary">
+                        <a
+                            href="kelola_guru.php"
+                            class="btn btn-outline-secondary btn-sm"
+                        >
                             Reset
                         </a>
 
@@ -630,16 +753,16 @@ body {
 
             <div class="table-responsive">
 
-                <table class="table table-hover align-middle">
+                <table class="table table-bordered table-hover align-middle">
 
                     <thead class="table-secondary">
 
                         <tr>
-                            <th>No</th>
+                            <th width="55">No</th>
                             <th>Nama Guru / NIP</th>
                             <th>Gmail</th>
                             <th>No HP</th>
-                            <th>Aksi</th>
+                            <th width="150">Aksi</th>
                         </tr>
 
                     </thead>
@@ -657,10 +780,13 @@ body {
                                 <td><?= $no++; ?></td>
 
                                 <td>
-                                    <b><?= htmlspecialchars($row['nama']); ?></b>
+                                    <strong>
+                                        <?= htmlspecialchars($row['nama']); ?>
+                                    </strong>
 
                                     <div class="text-muted small">
-                                        NIP: <?= htmlspecialchars($row['nip'] ?? '-'); ?>
+                                        NIP:
+                                        <?= htmlspecialchars($row['nip'] ?? '-'); ?>
                                     </div>
                                 </td>
 
@@ -674,14 +800,18 @@ body {
 
                                 <td>
 
-                                    <a class="btn btn-sm btn-stabilo"
-                                       href="edit_guru.php?id=<?= (int)$row['id']; ?>">
+                                    <a
+                                        href="edit_guru.php?id=<?= (int)$row['id']; ?>"
+                                        class="btn btn-sm btn-stabilo"
+                                    >
                                         Edit
                                     </a>
 
-                                    <a class="btn btn-sm btn-danger"
-                                       href="kelola_guru.php?hapus=<?= (int)$row['id']; ?>"
-                                       onclick="return confirm('Hapus guru dan akun login guru ini?')">
+                                    <a
+                                        href="kelola_guru.php?hapus=<?= (int)$row['id']; ?>"
+                                        class="btn btn-sm btn-danger"
+                                        onclick="return confirm('Hapus guru dan akun login guru ini?')"
+                                    >
                                         Hapus
                                     </a>
 
@@ -729,17 +859,17 @@ body {
 
                 <nav class="mt-3">
 
-                    <ul class="pagination mb-0">
+                    <ul class="pagination pagination-sm mb-0">
 
                         <?php if ($halaman > 1) { ?>
 
                             <li class="page-item">
-
-                                <a class="page-link"
-                                   href="?halaman=<?= $halaman - 1; ?>&search=<?= urlencode($search); ?>">
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($search); ?>"
+                                >
                                     &laquo;
                                 </a>
-
                             </li>
 
                         <?php } ?>
@@ -749,8 +879,10 @@ body {
 
                             <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
 
-                                <a class="page-link"
-                                   href="?halaman=<?= $i; ?>&search=<?= urlencode($search); ?>">
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $i; ?>&cari=<?= urlencode($search); ?>"
+                                >
                                     <?= $i; ?>
                                 </a>
 
@@ -762,12 +894,12 @@ body {
                         <?php if ($halaman < $total_halaman) { ?>
 
                             <li class="page-item">
-
-                                <a class="page-link"
-                                   href="?halaman=<?= $halaman + 1; ?>&search=<?= urlencode($search); ?>">
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($search); ?>"
+                                >
                                     &raquo;
                                 </a>
-
                             </li>
 
                         <?php } ?>
@@ -786,3 +918,7 @@ body {
 
 </body>
 </html>
+
+<?php
+$stmt->close();
+?>

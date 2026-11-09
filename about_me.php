@@ -1,46 +1,47 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-require_once "cek_role.php";
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
-wajib_login();
+require_once "database.php";
+require_once "auth.php";
 
-include "database.php";
+hanyaRole(['admin', 'guru']);
 
 $role = $_SESSION['role'] ?? '';
-
+$nama = $_SESSION['nama'] ?? 'Pengguna';
+$email = $_SESSION['email'] ?? '-';
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>About Me - Pelanggaran Siswa</title>
 
-    <style>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
+    <style>
         * {
             box-sizing: border-box;
         }
 
         body {
             margin: 0;
-            font-family: Arial, sans-serif;
             background: #f4f6f8;
-            color: #333;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            color: #212529;
         }
-
-        /* SIDEBAR */
 
         .sidebar {
             position: fixed;
-            left: 0;
             top: 0;
+            left: 0;
             width: 220px;
             height: 100vh;
             background: #687280;
@@ -66,13 +67,9 @@ $role = $_SESSION['role'] ?? '';
             font-size: 14px;
         }
 
-        .sidebar a:hover {
-            background: #56606d;
-        }
-
+        .sidebar a:hover,
         .sidebar a.active {
             background: #4f5965;
-            font-weight: bold;
         }
 
         .sidebar .logout {
@@ -84,53 +81,21 @@ $role = $_SESSION['role'] ?? '';
             background: #941d1d;
         }
 
-        /* CONTENT */
-
         .content {
             margin-left: 220px;
             padding: 30px;
         }
 
-        .top-header {
+        .panel {
             background: white;
             border: 1px solid #ddd;
-            border-radius: 7px;
-            padding: 18px 22px;
-            margin-bottom: 20px;
+            border-radius: 6px;
+            margin-bottom: 15px;
         }
 
-        .top-header h1 {
-            margin: 0;
-            font-size: 24px;
+        .panel-body {
+            padding: 20px;
         }
-
-        .top-header p {
-            margin: 7px 0 0;
-            color: #777;
-            font-size: 14px;
-        }
-
-        /* BOX */
-
-        .box {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 7px;
-            padding: 25px;
-            margin-bottom: 20px;
-        }
-
-        .box h2 {
-            margin-top: 0;
-            font-size: 20px;
-        }
-
-        .box p {
-            line-height: 1.7;
-            color: #555;
-        }
-
-        /* INFO */
 
         .info-table {
             width: 100%;
@@ -141,6 +106,11 @@ $role = $_SESSION['role'] ?? '';
         .info-table td {
             padding: 11px;
             border-bottom: 1px solid #ddd;
+            font-size: 14px;
+        }
+
+        .info-table tr:last-child td {
+            border-bottom: none;
         }
 
         .info-table td:first-child {
@@ -148,10 +118,7 @@ $role = $_SESSION['role'] ?? '';
             font-weight: bold;
         }
 
-        /* RESPONSIVE */
-
         @media (max-width: 700px) {
-
             .sidebar {
                 position: relative;
                 width: 100%;
@@ -163,286 +130,151 @@ $role = $_SESSION['role'] ?? '';
                 padding: 15px;
             }
 
+            .info-table td:first-child {
+                width: 120px;
+            }
         }
-
     </style>
-
 </head>
-
 
 <body>
 
-
 <!-- SIDEBAR -->
-
 <div class="sidebar">
 
     <div class="sidebar-title">
-         Pelanggaran<br>
-        Siswa
+        ⚖ Pelanggaran<br>Siswa
     </div>
 
+    <?php if ($role === 'admin') { ?>
 
-    <a href="dashboard.php">
-         Dashboard
-    </a>
+        <a href="dashboard.php">🏠 Dashboard</a>
+        <a href="kelola_siswa.php">Data Siswa</a>
+        <a href="kelola_guru.php">Data Guru</a>
+        <a href="kelola_kelas.php">Data Kelas</a>
+        <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
+        <a href="kelola_wali_kelas.php">Wali Kelas</a>
+        <a href="penempatan_siswa.php">Penempatan Siswa</a>
+        <a href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a>
+        <a href="pelanggaran.php">Data Pelanggaran</a>
+        <a href="tindakan.php">Data Tindakan</a>
+        <a href="riwayat.php">Riwayat</a>
+        <a href="rekap_poin.php">Rekap Poin</a>
+        <a href="laporan.php">Laporan</a>
+        <a href="about_me.php" class="active">ℹ About Me</a>
 
+    <?php } else { ?>
 
-    <?php if ($role == 'admin') { ?>
-
-        <a href="kelola_siswa.php">
-             Data Siswa
-        </a>
-
-        <a href="kelola_guru.php">
-             Data Guru
-        </a>
-
-        <a href="kelola_kelas.php">
-             Data Kelas
-        </a>
-
-        <a href="kelola_tahun_ajaran.php">
-             Tahun Ajaran
-        </a>
-
-        <a href="kelola_wali_kelas.php">
-             Wali Kelas
-        </a>
-
-        <a href="penempatan_siswa.php">
-             Penempatan Siswa
-        </a>
-
-        <a href="kelola_pelanggaran_kategori.php">
-            ⚠ Kategori Pelanggaran
-        </a>
-
-        <a href="pelanggaran.php">
-             Data Pelanggaran
-        </a>
-
-        <a href="tindakan.php">
-             Data Tindakan
-        </a>
-
-        <a href="laporan.php">
-             Laporan
-        </a>
-
-        <a href="about_me.php" class="active">
-            ℹ About Me
-        </a>
+        <a href="dashboard.php">🏠 Dashboard</a>
+        <a href="catat_pelanggaran.php">Catat Pelanggaran</a>
+        <a href="pelanggaran.php">Data Pelanggaran</a>
+        <a href="tindakan.php">Data Tindakan</a>
+        <a href="riwayat.php">Riwayat</a>
+        <a href="rekap_poin.php">Rekap Poin</a>
 
     <?php } ?>
 
-
-    <?php if ($role == 'guru') { ?>
-
-        <a href="catat_pelanggaran.php">
-             Catat Pelanggaran
-        </a>
-
-        <a href="tindakan.php">
-             Tindakan
-        </a>
-
-        <a href="riwayat.php">
-             Riwayat
-        </a>
-
-        <a href="rekap_poin.php">
-             Rekap Poin
-        </a>
-
-    <?php } ?>
-
-
-    <?php if ($role == 'wali_kelas') { ?>
-
-        <a href="pelanggaran.php">
-             Data Pelanggaran
-        </a>
-
-        <a href="laporan.php">
-             Laporan
-        </a>
-
-    <?php } ?>
-
-
-    <a href="logout.php" class="logout">
-        🚪 Logout
-    </a>
+    <a href="logout.php" class="logout">🚪 Logout</a>
 
 </div>
-
 
 <!-- CONTENT -->
-
 <div class="content">
 
-
-    <div class="top-header">
-
-        <h1>
-            Sistem Informasi Pelanggaran Siswa
-        </h1>
-
-        <p>
-            About Me
-        </p>
-
+    <!-- HEADER -->
+    <div class="panel">
+        <div class="panel-body">
+            <h4 class="mb-1">About Me</h4>
+            <p class="text-muted mb-0">
+                Informasi mengenai sistem dan pembuat aplikasi.
+            </p>
+        </div>
     </div>
-
 
     <!-- TENTANG SISTEM -->
+    <div class="panel">
+        <div class="panel-body">
+            <h5 class="mb-3">Tentang Sistem</h5>
 
-    <div class="box">
+            <p>
+                Sistem Informasi Pelanggaran Siswa merupakan
+                aplikasi yang digunakan untuk membantu sekolah
+                dalam mencatat, mengelola, dan memantau data
+                pelanggaran siswa.
+            </p>
 
-        <h2>
-            Tentang Sistem
-        </h2>
-
-        <p>
-            Sistem Informasi Pelanggaran Siswa merupakan
-            aplikasi yang digunakan untuk membantu sekolah
-            dalam mencatat, mengelola, dan memantau data
-            pelanggaran siswa.
-        </p>
-
-        <p>
-            Sistem ini dibuat agar pengelolaan data pelanggaran
-            dapat dilakukan dengan lebih mudah, teratur, dan
-            tersimpan dalam database.
-        </p>
-
+            <p class="mb-0">
+                Sistem ini dibuat agar pengelolaan data pelanggaran
+                dapat dilakukan dengan lebih mudah, teratur, dan
+                tersimpan dalam database.
+            </p>
+        </div>
     </div>
-
 
     <!-- INFORMASI PROJECT -->
+    <div class="panel">
+        <div class="panel-body">
+            <h5 class="mb-3">Informasi Project</h5>
 
-    <div class="box">
+            <div class="table-responsive">
+                <table class="info-table">
+                    <tr>
+                        <td>Nama Sistem</td>
+                        <td>Sistem Informasi Pelanggaran Siswa</td>
+                    </tr>
 
-        <h2>
-            Informasi Project
-        </h2>
+                    <tr>
+                        <td>Project</td>
+                        <td>UKK RPL 2026</td>
+                    </tr>
 
-        <table class="info-table">
+                    <tr>
+                        <td>Teknologi</td>
+                        <td>PHP, MySQL, HTML, CSS, Bootstrap</td>
+                    </tr>
 
-            <tr>
-
-                <td>
-                    Nama Sistem
-                </td>
-
-                <td>
-                    Sistem Informasi Pelanggaran Siswa
-                </td>
-
-            </tr>
-
-            <tr>
-
-                <td>
-                    Project
-                </td>
-
-                <td>
-                    UKK RPL 2026
-                </td>
-
-            </tr>
-
-            <tr>
-
-                <td>
-                    Teknologi
-                </td>
-
-                <td>
-                    PHP, MySQL, HTML, CSS
-                </td>
-
-            </tr>
-
-            <tr>
-
-                <td>
-                    Database
-                </td>
-
-                <td>
-                    ukk-2026
-                </td>
-
-            </tr>
-
-        </table>
-
+                    <tr>
+                        <td>Database</td>
+                        <td>ukk_2026</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
     </div>
-
 
     <!-- PEMBUAT -->
+    <div class="panel">
+        <div class="panel-body">
+            <h5 class="mb-3">Pembuat</h5>
 
-    <div class="box">
+            <p>
+                Aplikasi ini dibuat sebagai project
+                Uji Kompetensi Keahlian (UKK) Rekayasa
+                Perangkat Lunak.
+            </p>
 
-        <h2>
-            Pembuat
-        </h2>
+            <div class="table-responsive">
+                <table class="info-table">
+                    <tr>
+                        <td>Nama</td>
+                        <td>Erlangga Saputra Hidayat</td>
+                    </tr>
 
-        <p>
-            Aplikasi ini dibuat sebagai project
-            Uji Kompetensi Keahlian (UKK) Rekayasa
-            Perangkat Lunak.
-        </p>
+                    <tr>
+                        <td>Jurusan</td>
+                        <td>Rekayasa Perangkat Lunak</td>
+                    </tr>
 
-        <table class="info-table">
-
-            <tr>
-
-                <td>
-                    Nama
-                </td>
-
-                <td>
-                    Erlangga Saputra Hidayat
-                </td>
-
-            </tr>
-
-            <tr>
-
-                <td>
-                    Jurusan
-                </td>
-
-                <td>
-                    Rekayasa Perangkat Lunak
-                </td>
-
-            </tr>
-
-            <tr>
-
-                <td>
-                    Tahun
-                </td>
-
-                <td>
-                    2026
-                </td>
-
-            </tr>
-
-        </table>
-
+                    <tr>
+                        <td>Tahun</td>
+                        <td>2026</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
     </div>
-
 
 </div>
 
-
 </body>
-
 </html>
