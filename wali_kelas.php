@@ -431,38 +431,38 @@ $query_wali = mysqli_query(
 
 
     <a href="dashboard.php">
-        🏠 Dashboard
+         Dashboard
     </a>
 
 
     <?php if ($role === 'admin') { ?>
 
         <a href="kelola_siswa.php">
-            👤 Data Siswa
+             Data Siswa
         </a>
 
         <a href="kelola_guru.php">
-            👥 Data Guru
+             Data Guru
         </a>
 
         <a href="kelola_kelas.php">
-            🏫 Data Kelas
+             Data Kelas
         </a>
 
         <a href="kelola_tahun_ajaran.php">
-            📅 Data Tahun Ajaran
+            Data Tahun Ajaran
         </a>
 
         <a href="wali_kelas.php" class="active">
-            👨‍🏫 Data Wali Kelas
+             Data Wali Kelas
         </a>
 
         <a href="penempatan_siswa.php">
-            📋 Penempatan Siswa
+             Penempatan Siswa
         </a>
 
         <a href="kelola_pelanggaran_kategori.php">
-            ⚠ Kategori Pelanggaran
+             Kategori Pelanggaran
         </a>
 
         <a href="pelanggaran.php">
@@ -470,11 +470,11 @@ $query_wali = mysqli_query(
         </a>
 
         <a href="tindakan.php">
-            📝 Data Tindakan
+             Data Tindakan
         </a>
 
         <a href="laporan.php">
-            📊 Laporan
+             Laporan
         </a>
 
         <a href="about_me.php">
@@ -487,26 +487,26 @@ $query_wali = mysqli_query(
     <?php if ($role === 'guru') { ?>
 
         <a href="catat_pelanggaran.php">
-            📝 Catat Pelanggaran
+             Catat Pelanggaran
         </a>
 
         <a href="tindakan.php">
-            ⚖ Tindakan
+             Tindakan
         </a>
 
         <a href="riwayat.php">
-            📋 Riwayat
+             Riwayat
         </a>
 
         <a href="rekap_poin.php">
-            📊 Rekap Poin
+             Rekap Poin
         </a>
 
     <?php } ?>
 
 
     <a href="logout.php" class="logout">
-        🚪 Logout
+         Logout
     </a>
 
 </div>

@@ -331,7 +331,7 @@ body {
 
     <nav class="nav flex-column">
 
-        <a href="dashboard.php" class="nav-link">🏠 Dashboard</a>
+        <a href="dashboard.php" class="nav-link"> Dashboard</a>
 
         <?php if ($role === 'admin'): ?>
 
@@ -341,7 +341,7 @@ body {
             <a href="kelola_tahun_ajaran.php" class="nav-link">Tahun Ajaran</a>
             <a href="kelola_wali_kelas.php" class="nav-link">Wali Kelas</a>
             <a href="penempatan_siswa.php" class="nav-link">Penempatan Siswa</a>
-            <a href="kelola_pelanggaran_kategori.php" class="nav-link">⚠ Kategori Pelanggaran</a>
+            <a href="kelola_pelanggaran_kategori.php" class="nav-link"> Kategori Pelanggaran</a>
             <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
             <a href="tindakan.php" class="nav-link">Data Tindakan</a>
             <a href="riwayat.php" class="nav-link">Riwayat</a>

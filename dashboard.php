@@ -257,7 +257,7 @@ $query_terbaru = mysqli_query(
     <nav class="nav flex-column">
 
         <a href="dashboard.php" class="nav-link active">
-            🏠 Dashboard
+             Dashboard
         </a>
 
         <?php if ($role == 'admin') { ?>
@@ -270,7 +270,7 @@ $query_terbaru = mysqli_query(
             <a href="kelola_wali_kelas.php" class="nav-link">Wali Kelas</a>
             <a href="penempatan_siswa.php" class="nav-link">Penempatan Siswa</a>
             <a href="kelola_pelanggaran_kategori.php" class="nav-link">
-                ⚠ Kategori Pelanggaran
+                 Kategori Pelanggaran
             </a>
             <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
             <a href="tindakan.php" class="nav-link">Data Tindakan</a>
@@ -299,7 +299,7 @@ $query_terbaru = mysqli_query(
         <?php } ?>
 
         <a href="logout.php" class="nav-link logout">
-            🚪 Logout
+             Logout
         </a>
 
     </nav>
@@ -348,7 +348,7 @@ $query_terbaru = mysqli_query(
 
         <div class="col-md-3 col-sm-6">
             <div class="stat-card">
-                <div class="stat-icon">👤</div>
+                <div class="stat-icon"></div>
                 <div class="stat-label">Total Siswa Aktif</div>
                 <p class="stat-number"><?= $total_siswa; ?></p>
             </div>
@@ -356,7 +356,7 @@ $query_terbaru = mysqli_query(
 
         <div class="col-md-3 col-sm-6">
             <div class="stat-card">
-                <div class="stat-icon">⚖️</div>
+                <div class="stat-icon"></div>
                 <div class="stat-label">Total Pelanggaran</div>
                 <p class="stat-number"><?= $total_pelanggaran; ?></p>
             </div>
@@ -364,7 +364,7 @@ $query_terbaru = mysqli_query(
 
         <div class="col-md-3 col-sm-6">
             <div class="stat-card">
-                <div class="stat-icon">🗓️</div>
+                <div class="stat-icon"></div>
                 <div class="stat-label">Pelanggaran Bulan Ini</div>
                 <p class="stat-number"><?= $total_bulan; ?></p>
             </div>
@@ -372,7 +372,7 @@ $query_terbaru = mysqli_query(
 
         <div class="col-md-3 col-sm-6">
             <div class="stat-card">
-                <div class="stat-icon">❗</div>
+                <div class="stat-icon"></div>
                 <div class="stat-label">Siswa Bermasalah</div>
                 <p class="stat-number"><?= $total_bermasalah; ?></p>
             </div>

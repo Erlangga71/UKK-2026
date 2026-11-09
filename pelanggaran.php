@@ -630,7 +630,7 @@ $query_pelanggaran = $stmt_data->get_result();
     <nav class="nav flex-column">
 
         <a href="dashboard.php" class="nav-link">
-            🏠 Dashboard
+             Dashboard
         </a>
 
         <?php if ($role === 'admin'): ?>
@@ -643,7 +643,7 @@ $query_pelanggaran = $stmt_data->get_result();
             <a href="kelola_wali_kelas.php" class="nav-link">Wali Kelas</a>
             <a href="penempatan_siswa.php" class="nav-link">Penempatan Siswa</a>
             <a href="kelola_pelanggaran_kategori.php" class="nav-link">
-                ⚠ Kategori Pelanggaran
+                 Kategori Pelanggaran
             </a>
 
             <a href="pelanggaran.php" class="nav-link active">
@@ -680,7 +680,7 @@ $query_pelanggaran = $stmt_data->get_result();
         <?php endif; ?>
 
         <a href="logout.php" class="nav-link logout">
-            🚪 Logout
+             Logout
         </a>
 
     </nav>

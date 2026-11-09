@@ -210,7 +210,7 @@ body {
 
         <li>
             <a class="nav-link" href="dashboard.php">
-                🏠 Dashboard
+                 Dashboard
             </a>
         </li>
 
@@ -252,7 +252,7 @@ body {
 
         <li>
             <a class="nav-link" href="kelola_pelanggaran_kategori.php">
-                ⚠ Kategori Pelanggaran
+                 Kategori Pelanggaran
             </a>
         </li>
 
@@ -283,7 +283,7 @@ body {
     </ul>
 
     <a href="logout.php" class="btn btn-danger w-100 mt-4 text-start">
-        🚪 Logout
+         Logout
     </a>
 
 </div>

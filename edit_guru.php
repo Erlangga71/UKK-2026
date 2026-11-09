@@ -429,7 +429,7 @@ body {
         ⚖ Pelanggaran<br>Siswa
     </div>
 
-    <a href="dashboard.php">🏠 Dashboard</a>
+    <a href="dashboard.php"> Dashboard</a>
     <a href="kelola_siswa.php">Data Siswa</a>
     <a href="kelola_guru.php" class="active">Data Guru</a>
     <a href="kelola_kelas.php">Data Kelas</a>
@@ -442,7 +442,7 @@ body {
     <a href="laporan.php">Laporan</a>
     <a href="about_me.php">ℹ About Me</a>
 
-    <a href="logout.php" class="logout">🚪 Logout</a>
+    <a href="logout.php" class="logout"> Logout</a>
 
 </div>
 

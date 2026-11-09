@@ -397,7 +397,7 @@ function urlHalamanSiswa($halaman, $cari) {
     <nav class="nav flex-column">
 
         <a href="dashboard.php" class="nav-link">
-            🏠 Dashboard
+             Dashboard
         </a>
 
         <a href="kelola_siswa.php" class="nav-link active">
@@ -453,7 +453,7 @@ function urlHalamanSiswa($halaman, $cari) {
         </a>
 
         <a href="logout.php" class="nav-link logout">
-            🚪 Logout
+             Logout
         </a>
 
     </nav>

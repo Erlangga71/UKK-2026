@@ -298,7 +298,7 @@ if (isset($_POST['update'])) {
 
     <ul class="nav flex-column gap-1">
 
-        <li><a class="nav-link" href="dashboard.php">🏠 Dashboard</a></li>
+        <li><a class="nav-link" href="dashboard.php"> Dashboard</a></li>
         <li><a class="nav-link active" href="kelola_siswa.php">Data Siswa</a></li>
         <li><a class="nav-link" href="kelola_guru.php">Data Guru</a></li>
         <li><a class="nav-link" href="kelola_kelas.php">Data Kelas</a></li>
@@ -314,7 +314,7 @@ if (isset($_POST['update'])) {
     </ul>
 
     <a href="logout.php" class="btn btn-danger w-100 mt-4 text-start">
-        🚪 Logout
+         Logout
     </a>
 
 </div>

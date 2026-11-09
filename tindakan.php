@@ -352,14 +352,14 @@ body {
 
     <?php if ($role === 'admin') { ?>
 
-        <a href="dashboard.php">🏠 Dashboard</a>
+        <a href="dashboard.php"> Dashboard</a>
         <a href="kelola_siswa.php">Data Siswa</a>
         <a href="kelola_guru.php">Data Guru</a>
         <a href="kelola_kelas.php">Data Kelas</a>
         <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
         <a href="kelola_wali_kelas.php">Wali Kelas</a>
         <a href="penempatan_siswa.php">Penempatan Siswa</a>
-        <a href="kelola_pelanggaran_kategori.php">⚠ Kategori Pelanggaran</a>
+        <a href="kelola_pelanggaran_kategori.php"> Kategori Pelanggaran</a>
         <a href="pelanggaran.php">Data Pelanggaran</a>
         <a href="tindakan.php" class="active">Data Tindakan</a>
         <a href="riwayat.php">Riwayat</a>
@@ -369,7 +369,7 @@ body {
 
     <?php } else { ?>
 
-        <a href="dashboard.php">🏠 Dashboard</a>
+        <a href="dashboard.php"> Dashboard</a>
         <a href="catat_pelanggaran.php">Catat Pelanggaran</a>
         <a href="pelanggaran.php">Data Pelanggaran</a>
         <a href="tindakan.php" class="active">Data Tindakan</a>
@@ -378,7 +378,7 @@ body {
 
     <?php } ?>
 
-    <a href="logout.php" class="logout">🚪 Logout</a>
+    <a href="logout.php" class="logout"> Logout</a>
 </div>
 
 <!-- KONTEN -->

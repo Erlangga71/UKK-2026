@@ -321,7 +321,7 @@ if (isset($_POST['update'])) {
         ⚖ Pelanggaran<br>Siswa
     </div>
 
-    <a href="dashboard.php">🏠 Dashboard</a>
+    <a href="dashboard.php"> Dashboard</a>
     <a href="kelola_siswa.php">Data Siswa</a>
     <a href="kelola_guru.php">Data Guru</a>
     <a href="kelola_kelas.php">Data Kelas</a>
@@ -333,7 +333,7 @@ if (isset($_POST['update'])) {
     <a href="tindakan.php">Data Tindakan</a>
     <a href="laporan.php">Laporan</a>
     <a href="about_me.php">ℹ About Me</a>
-    <a href="logout.php" class="logout">🚪 Logout</a>
+    <a href="logout.php" class="logout"> Logout</a>
 
 </div>
 

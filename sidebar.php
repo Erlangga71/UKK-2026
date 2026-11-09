@@ -17,7 +17,7 @@ function menuAktif($nama, $menu_aktif) {
 
         <a href="dashboard.php"
            class="nav-link <?= menuAktif('dashboard', $menu_aktif); ?>">
-            🏠 Dashboard
+             Dashboard
         </a>
 
         <?php if ($role === 'admin'): ?>
@@ -54,7 +54,7 @@ function menuAktif($nama, $menu_aktif) {
 
             <a href="kelola_pelanggaran_kategori.php"
                class="nav-link <?= menuAktif('kategori', $menu_aktif); ?>">
-                ⚠ Kategori Pelanggaran
+                 Kategori Pelanggaran
             </a>
 
             <a href="pelanggaran.php"
@@ -117,7 +117,7 @@ function menuAktif($nama, $menu_aktif) {
         <?php endif; ?>
 
         <a href="logout.php" class="nav-link logout">
-            🚪 Logout
+             Logout
         </a>
 
     </nav>
