@@ -1,40 +1,166 @@
+
 <?php
 
 require_once "cek_role.php";
 wajib_role(['admin']);
 
-include "database.php";
+require_once "database.php";
 
 $error = "";
 
+$nip = "";
+$nama = "";
+$email = "";
+$no_hp = "";
+
 if (isset($_POST['simpan'])) {
 
-    $nip = mysqli_real_escape_string($koneksi, $_POST['nip']);
-    $nama = mysqli_real_escape_string($koneksi, $_POST['nama']);
-    $email = mysqli_real_escape_string($koneksi, $_POST['email']);
-    $no_hp = mysqli_real_escape_string($koneksi, $_POST['no_hp']);
+    $nip = trim($_POST['nip'] ?? '');
+    $nama = trim($_POST['nama'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $no_hp = trim($_POST['no_hp'] ?? '');
+    $password = $_POST['password'] ?? '';
 
-    if ($nama == "") {
-        $error = "Nama guru wajib diisi.";
+    if ($nama === "" || $email === "" || $password === "") {
+
+        $error = "Nama, email, dan password wajib diisi.";
+
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+
+        $error = "Format email tidak valid.";
+
+    } elseif (strlen($password) < 6) {
+
+        $error = "Password minimal 6 karakter.";
+
     } else {
 
-        $query = mysqli_query($koneksi, "
-            INSERT INTO guru
-            (nip, nama, email, no_hp)
-            VALUES
-            ('$nip', '$nama', '$email', '$no_hp')
-        ");
+        try {
 
-        if ($query) {
+            mysqli_begin_transaction($koneksi);
+
+            // CEK EMAIL SUDAH DIGUNAKAN ATAU BELUM
+            $cek_email = mysqli_prepare($koneksi, "
+                SELECT id FROM guru WHERE email = ?
+                UNION
+                SELECT id FROM users WHERE email = ?
+            ");
+
+            mysqli_stmt_bind_param(
+                $cek_email,
+                "ss",
+                $email,
+                $email
+            );
+
+            mysqli_stmt_execute($cek_email);
+            $hasil_email = mysqli_stmt_get_result($cek_email);
+
+            if (mysqli_num_rows($hasil_email) > 0) {
+
+                throw new Exception("Email sudah digunakan.");
+
+            }
+
+            // CEK NIP JIKA DIISI
+            if ($nip !== "") {
+
+                $cek_nip = mysqli_prepare($koneksi, "
+                    SELECT id FROM guru WHERE nip = ?
+                ");
+
+                mysqli_stmt_bind_param($cek_nip, "s", $nip);
+                mysqli_stmt_execute($cek_nip);
+
+                $hasil_nip = mysqli_stmt_get_result($cek_nip);
+
+                if (mysqli_num_rows($hasil_nip) > 0) {
+                    throw new Exception("NIP sudah digunakan.");
+                }
+
+            }
+
+            // SIMPAN DATA GURU
+            $query_guru = mysqli_prepare($koneksi, "
+                INSERT INTO guru (nip, nama, email, no_hp)
+                VALUES (?, ?, ?, ?)
+            ");
+
+            $nip_db = ($nip === "") ? null : $nip;
+
+            mysqli_stmt_bind_param(
+                $query_guru,
+                "ssss",
+                $nip_db,
+                $nama,
+                $email,
+                $no_hp
+            );
+
+            if (!mysqli_stmt_execute($query_guru)) {
+                throw new Exception("Gagal menyimpan data guru.");
+            }
+
+            $guru_id = mysqli_insert_id($koneksi);
+
+            // ENKRIPSI PASSWORD
+            $password_hash = password_hash(
+                $password,
+                PASSWORD_DEFAULT
+            );
+
+            // BUAT AKUN LOGIN GURU OTOMATIS
+            // Username menggunakan email guru.
+            $query_user = mysqli_prepare($koneksi, "
+                INSERT INTO users
+                (guru_id, nama, username, password, role, aktif, email)
+                VALUES (?, ?, ?, ?, 'guru', 1, ?)
+            ");
+
+            mysqli_stmt_bind_param(
+                $query_user,
+                "issss",
+                $guru_id,
+                $nama,
+                $email,
+                $password_hash,
+                $email
+            );
+
+            if (!mysqli_stmt_execute($query_user)) {
+                throw new Exception("Gagal membuat akun login guru.");
+            }
+
+            $user_id = mysqli_insert_id($koneksi);
+
+            // HUBUNGKAN AKUN DENGAN DATA GURU
+            $query_update = mysqli_prepare($koneksi, "
+                UPDATE guru SET user_id = ? WHERE id = ?
+            ");
+
+            mysqli_stmt_bind_param(
+                $query_update,
+                "ii",
+                $user_id,
+                $guru_id
+            );
+
+            if (!mysqli_stmt_execute($query_update)) {
+                throw new Exception("Gagal menghubungkan akun guru.");
+            }
+
+            mysqli_commit($koneksi);
 
             header("Location: guru.php");
             exit;
 
-        } else {
+        } catch (Throwable $e) {
 
-            $error = mysqli_error($koneksi);
+            mysqli_rollback($koneksi);
+            $error = $e->getMessage();
 
         }
+
     }
 }
 
@@ -105,6 +231,7 @@ if (isset($_POST['simpan'])) {
             font-size: 15px;
             background: white;
             color: black;
+            box-sizing: border-box;
         }
 
         .form-group {
@@ -166,30 +293,28 @@ if (isset($_POST['simpan'])) {
 
             <div class="form-group">
 
-                <label for="nip">
-                    NIP
-                </label>
+                <label for="nip">NIP</label>
 
                 <input
                     type="text"
                     id="nip"
                     name="nip"
                     placeholder="Masukkan NIP"
+                    value="<?= htmlspecialchars($nip); ?>"
                 >
 
             </div>
 
             <div class="form-group">
 
-                <label for="nama">
-                    Nama Guru
-                </label>
+                <label for="nama">Nama Guru</label>
 
                 <input
                     type="text"
                     id="nama"
                     name="nama"
                     placeholder="Masukkan nama guru"
+                    value="<?= htmlspecialchars($nama); ?>"
                     required
                 >
 
@@ -197,30 +322,44 @@ if (isset($_POST['simpan'])) {
 
             <div class="form-group">
 
-                <label for="email">
-                    Email
-                </label>
+                <label for="email">Email</label>
 
                 <input
                     type="email"
                     id="email"
                     name="email"
                     placeholder="Masukkan email"
+                    value="<?= htmlspecialchars($email); ?>"
+                    required
                 >
 
             </div>
 
             <div class="form-group">
 
-                <label for="no_hp">
-                    No. HP
-                </label>
+                <label for="password">Password Login</label>
+
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Buat password untuk guru"
+                    minlength="6"
+                    required
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label for="no_hp">No. HP</label>
 
                 <input
                     type="text"
                     id="no_hp"
                     name="no_hp"
                     placeholder="Masukkan nomor HP"
+                    value="<?= htmlspecialchars($no_hp); ?>"
                 >
 
             </div>
@@ -233,10 +372,7 @@ if (isset($_POST['simpan'])) {
                 Simpan
             </button>
 
-            <a
-                href="guru.php"
-                class="batal"
-            >
+            <a href="guru.php" class="batal">
                 Batal
             </a>
 
