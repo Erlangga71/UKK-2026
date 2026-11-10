@@ -137,7 +137,9 @@ $total_data = $query ? mysqli_num_rows($query) : 0;
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
-* { box-sizing: border-box; }
+* {
+    box-sizing: border-box;
+}
 
 body {
     margin: 0;
@@ -147,6 +149,7 @@ body {
     color: #333;
 }
 
+/* SIDEBAR */
 #sidebar-laporan {
     position: fixed;
     top: 0;
@@ -157,14 +160,6 @@ body {
     background: #687280;
     overflow-y: auto;
     z-index: 1000;
-}
-
-#sidebar-laporan .sidebar-title {
-    color: white;
-    font-size: 19px;
-    font-weight: bold;
-    margin: 0 8px 25px;
-    line-height: 1.4;
 }
 
 #sidebar-laporan .nav-link {
@@ -192,6 +187,7 @@ body {
     background: #941d1d;
 }
 
+/* KONTEN */
 .content-laporan {
     margin-left: 220px;
     padding: 30px;
@@ -263,6 +259,7 @@ body {
     padding-right: 60px;
 }
 
+/* RESPONSIVE */
 @media (max-width: 700px) {
     #sidebar-laporan {
         position: relative;
@@ -276,6 +273,7 @@ body {
     }
 }
 
+/* CETAK */
 @media print {
     @page {
         size: landscape;
@@ -325,13 +323,9 @@ body {
 <!-- SIDEBAR -->
 <aside id="sidebar-laporan">
 
-    <div class="sidebar-title">
-        ⚖ Pelanggaran<br>Siswa
-    </div>
-
     <nav class="nav flex-column">
 
-        <a href="dashboard.php" class="nav-link"> Dashboard</a>
+        <a href="dashboard.php" class="nav-link">Dashboard</a>
 
         <?php if ($role === 'admin'): ?>
 
@@ -341,25 +335,21 @@ body {
             <a href="kelola_tahun_ajaran.php" class="nav-link">Tahun Ajaran</a>
             <a href="kelola_wali_kelas.php" class="nav-link">Wali Kelas</a>
             <a href="penempatan_siswa.php" class="nav-link">Penempatan Siswa</a>
-            <a href="kelola_pelanggaran_kategori.php" class="nav-link"> Kategori Pelanggaran</a>
+            <a href="kelola_pelanggaran_kategori.php" class="nav-link">Kategori Pelanggaran</a>
             <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
             <a href="tindakan.php" class="nav-link">Data Tindakan</a>
-            <a href="riwayat.php" class="nav-link">Riwayat</a>
-            <a href="rekap_poin.php" class="nav-link">Rekap Poin</a>
             <a href="laporan.php" class="nav-link active">Laporan</a>
-            <a href="about_me.php" class="nav-link">ℹ About Me</a>
+            <a href="about_me.php" class="nav-link">About Me</a>
 
         <?php else: ?>
 
             <a href="catat_pelanggaran.php" class="nav-link">Catat Pelanggaran</a>
             <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
             <a href="tindakan.php" class="nav-link">Data Tindakan</a>
-            <a href="riwayat.php" class="nav-link">Riwayat</a>
-            <a href="rekap_poin.php" class="nav-link">Rekap Poin</a>
 
         <?php endif; ?>
 
-        <a href="logout.php" class="nav-link logout">🚪 Logout</a>
+        <a href="logout.php" class="nav-link logout">Logout</a>
 
     </nav>
 </aside>
@@ -422,7 +412,7 @@ body {
 
             <button onclick="window.print()" class="btn btn-cetak btn-sm"
                 <?= $error !== '' ? 'disabled' : ''; ?>>
-                🖨 Cetak Laporan
+                Cetak Laporan
             </button>
         </div>
 

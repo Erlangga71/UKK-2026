@@ -1,4 +1,3 @@
-
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -41,6 +40,7 @@ if (isset($_POST['simpan'])) {
     } elseif ($user_id <= 0) {
         $error = "ID akun petugas tidak ditemukan. Silakan login kembali.";
     } else {
+
         $cek = mysqli_prepare(
             $koneksi,
             "SELECT id FROM pelanggaran WHERE id = ? LIMIT 1"
@@ -54,6 +54,7 @@ if (isset($_POST['simpan'])) {
         if (!$hasil_cek) {
             $error = "Data pelanggaran tidak ditemukan.";
         } else {
+
             $stmt = mysqli_prepare(
                 $koneksi,
                 "INSERT INTO tindakan
@@ -97,6 +98,7 @@ if (isset($_POST['hapus'])) {
     $id = (int)($_POST['id'] ?? 0);
 
     if ($id > 0) {
+
         $stmt = mysqli_prepare(
             $koneksi,
             "DELETE FROM tindakan WHERE id = ?"
@@ -135,6 +137,7 @@ $cari = trim($_GET['cari'] ?? '');
 $where = "";
 
 if ($cari !== '') {
+
     $cari_sql = mysqli_real_escape_string($koneksi, $cari);
 
     $where = "WHERE
@@ -202,7 +205,9 @@ if (!$data) {
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
-* { box-sizing: border-box; }
+* {
+    box-sizing: border-box;
+}
 
 body {
     margin: 0;
@@ -222,14 +227,6 @@ body {
     background: #687280;
     overflow-y: auto;
     z-index: 1000;
-}
-
-.sidebar-title {
-    color: white;
-    font-size: 19px;
-    font-weight: bold;
-    margin: 0 8px 25px;
-    line-height: 1.4;
 }
 
 .sidebar a {
@@ -346,39 +343,32 @@ body {
 <!-- SIDEBAR -->
 <div class="sidebar">
 
-    <div class="sidebar-title">
-        ⚖ Pelanggaran<br>Siswa
-    </div>
-
     <?php if ($role === 'admin') { ?>
 
-        <a href="dashboard.php"> Dashboard</a>
+        <a href="dashboard.php">Dashboard</a>
         <a href="kelola_siswa.php">Data Siswa</a>
         <a href="kelola_guru.php">Data Guru</a>
         <a href="kelola_kelas.php">Data Kelas</a>
         <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
         <a href="kelola_wali_kelas.php">Wali Kelas</a>
         <a href="penempatan_siswa.php">Penempatan Siswa</a>
-        <a href="kelola_pelanggaran_kategori.php"> Kategori Pelanggaran</a>
+        <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
         <a href="pelanggaran.php">Data Pelanggaran</a>
         <a href="tindakan.php" class="active">Data Tindakan</a>
-        <a href="riwayat.php">Riwayat</a>
-        <a href="rekap_poin.php">Rekap Poin</a>
         <a href="laporan.php">Laporan</a>
-        <a href="about_me.php">ℹ About Me</a>
+        <a href="about_me.php">About Me</a>
 
     <?php } else { ?>
 
-        <a href="dashboard.php"> Dashboard</a>
+        <a href="dashboard.php">Dashboard</a>
         <a href="catat_pelanggaran.php">Catat Pelanggaran</a>
         <a href="pelanggaran.php">Data Pelanggaran</a>
         <a href="tindakan.php" class="active">Data Tindakan</a>
-        <a href="riwayat.php">Riwayat</a>
-        <a href="rekap_poin.php">Rekap Poin</a>
 
     <?php } ?>
 
-    <a href="logout.php" class="logout"> Logout</a>
+    <a href="logout.php" class="logout">Logout</a>
+
 </div>
 
 <!-- KONTEN -->
@@ -410,6 +400,7 @@ body {
     <?php } ?>
 
     <?php if ($tampil_form) { ?>
+
         <div class="box">
             <h5 class="mb-3">Tambah Tindakan</h5>
 
@@ -427,17 +418,23 @@ body {
                             <option value="">-- Pilih Pelanggaran --</option>
 
                             <?php while ($p = mysqli_fetch_assoc($pelanggaran)) { ?>
+
                                 <option value="<?= (int)$p['id']; ?>"
                                     <?= (int)($_POST['pelanggaran_id'] ?? 0) === (int)$p['id'] ? 'selected' : ''; ?>>
+
                                     <?= htmlspecialchars($p['nama_siswa']); ?> -
                                     <?= htmlspecialchars($p['nama_pelanggaran']); ?>
+
                                 </option>
+
                             <?php } ?>
+
                         </select>
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label">Tanggal Tindakan</label>
+
                         <input type="date" name="tanggal" class="form-control"
                                value="<?= htmlspecialchars($_POST['tanggal'] ?? date('Y-m-d')); ?>"
                                required>
@@ -445,6 +442,7 @@ body {
 
                     <div class="mb-3">
                         <label class="form-label">Tindakan</label>
+
                         <textarea name="tindakan" class="form-control" rows="3"
                                   placeholder="Masukkan tindakan yang diberikan..."
                                   required><?= htmlspecialchars($_POST['tindakan'] ?? ''); ?></textarea>
@@ -452,6 +450,7 @@ body {
 
                     <div class="mb-3">
                         <label class="form-label">Catatan</label>
+
                         <textarea name="catatan" class="form-control" rows="3"
                                   placeholder="Catatan tambahan (opsional)"><?= htmlspecialchars($_POST['catatan'] ?? ''); ?></textarea>
                     </div>
@@ -461,14 +460,19 @@ body {
                     </button>
 
                     <a href="tindakan.php" class="btn btn-secondary">Batal</a>
+
                 </form>
 
             <?php } else { ?>
+
                 <div class="alert alert-warning mb-0">
                     Belum ada data pelanggaran. Catat pelanggaran terlebih dahulu.
                 </div>
+
             <?php } ?>
+
         </div>
+
     <?php } ?>
 
     <div class="box">
@@ -476,6 +480,7 @@ body {
         <h5 class="mb-3">Daftar Tindakan Siswa</h5>
 
         <form method="GET" class="row g-2 mb-3">
+
             <div class="col-md-5">
                 <input type="text" name="cari" class="form-control"
                        placeholder="Cari nama siswa, pelanggaran, petugas..."
@@ -486,10 +491,13 @@ body {
                 <button type="submit" class="btn btn-secondary">Cari</button>
                 <a href="tindakan.php" class="btn btn-outline-secondary">Reset</a>
             </div>
+
         </form>
 
         <div class="table-responsive">
+
             <table class="table table-bordered table-striped">
+
                 <thead>
                     <tr>
                         <th>No</th>
@@ -499,19 +507,24 @@ body {
                         <th>Tindakan</th>
                         <th>Petugas</th>
                         <th>Catatan</th>
+
                         <?php if ($role === 'admin') { ?>
                             <th>Aksi</th>
                         <?php } ?>
+
                     </tr>
                 </thead>
 
                 <tbody>
+
                     <?php
                     $no = $mulai + 1;
 
                     if (mysqli_num_rows($data) > 0) {
+
                         while ($row = mysqli_fetch_assoc($data)) {
                     ?>
+
                         <tr>
                             <td><?= $no++; ?></td>
                             <td><?= htmlspecialchars($row['nama_siswa']); ?></td>
@@ -522,14 +535,20 @@ body {
                             <td><?= htmlspecialchars($row['catatan'] ?? '-'); ?></td>
 
                             <?php if ($role === 'admin') { ?>
+
                                 <td>
+
                                     <a href="edit_tindakan.php?id=<?= (int)$row['id']; ?>"
-                                       class="btn btn-sm btn-edit mb-1">Edit</a>
+                                       class="btn btn-sm btn-edit mb-1">
+                                        Edit
+                                    </a>
 
                                     <form method="POST" class="d-inline"
                                           onsubmit="return confirm('Yakin ingin menghapus tindakan ini?')">
+
                                         <input type="hidden" name="csrf_token"
                                                value="<?= htmlspecialchars($_SESSION['csrf_token']); ?>">
+
                                         <input type="hidden" name="id"
                                                value="<?= (int)$row['id']; ?>">
 
@@ -537,38 +556,57 @@ body {
                                                 class="btn btn-sm btn-hapus mb-1">
                                             Hapus
                                         </button>
+
                                     </form>
+
                                 </td>
+
                             <?php } ?>
+
                         </tr>
+
                     <?php
                         }
+
                     } else {
                     ?>
+
                         <tr>
                             <td colspan="<?= $role === 'admin' ? 8 : 7; ?>"
                                 class="text-center py-4">
                                 Belum ada data tindakan.
                             </td>
                         </tr>
+
                     <?php } ?>
+
                 </tbody>
+
             </table>
+
         </div>
 
         <?php if ($total_halaman > 1) { ?>
+
             <nav>
                 <ul class="pagination mb-3">
+
                     <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+
                         <li class="page-item <?= $halaman === $i ? 'active' : ''; ?>">
+
                             <a class="page-link"
                                href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>">
                                 <?= $i; ?>
                             </a>
+
                         </li>
+
                     <?php } ?>
+
                 </ul>
             </nav>
+
         <?php } ?>
 
         <small class="text-muted">
@@ -577,6 +615,7 @@ body {
         </small>
 
     </div>
+
 </div>
 
 </body>

@@ -1,5 +1,11 @@
+
 <?php
-session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 require_once "database.php";
 require_once "auth.php";
@@ -7,6 +13,7 @@ require_once "auth.php";
 hanyaRole(['admin']);
 
 $error = "";
+$tampil_form = isset($_GET['tambah']) && $_GET['tambah'] == '1';
 
 /* =========================
    TOKEN CSRF
@@ -88,6 +95,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'kelas') {
 ========================= */
 
 if (isset($_POST['simpan'])) {
+
+    $tampil_form = true;
 
     if (
         !isset($_POST['csrf_token']) ||
@@ -297,7 +306,7 @@ if ($cari !== '') {
    PAGINATION
 ========================= */
 
-$batas = 5;
+$per_halaman = 10;
 
 $halaman = max(1, intval($_GET['halaman'] ?? 1));
 
@@ -315,15 +324,15 @@ if (!$query_jumlah) {
     die("Gagal menghitung data: " . mysqli_error($koneksi));
 }
 
-$total_data = (int) mysqli_fetch_assoc($query_jumlah)['total'];
+$total_data = (int)mysqli_fetch_assoc($query_jumlah)['total'];
 
-$total_halaman = max(1, (int) ceil($total_data / $batas));
+$total_halaman = max(1, (int)ceil($total_data / $per_halaman));
 
 if ($halaman > $total_halaman) {
     $halaman = $total_halaman;
 }
 
-$mulai = ($halaman - 1) * $batas;
+$mulai = ($halaman - 1) * $per_halaman;
 
 /* =========================
    DATA GURU YANG BELUM MENJADI WALI KELAS
@@ -386,7 +395,7 @@ $data = mysqli_query(
      INNER JOIN tahun_ajaran t ON wk.tahun_ajaran_id = t.id
      $where
      ORDER BY wk.id DESC
-     LIMIT $mulai, $batas"
+     LIMIT $mulai, $per_halaman"
 );
 
 if (!$data) {
@@ -398,116 +407,143 @@ if (!$data) {
 <html lang="id">
 
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Wali Kelas</title>
 
-    <title>Kelola Wali Kelas</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
 
-    <style>
+body {
+    margin: 0;
+    background: #f4f6f8;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    color: #212529;
+}
 
-        body {
-            margin: 0;
-            background: #f4f6f8;
-            font-family: Arial, sans-serif;
-        }
+/* SIDEBAR */
 
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 220px;
-            height: 100vh;
-            background: #687280;
-            padding: 20px 12px;
-            overflow-y: auto;
-        }
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 220px;
+    height: 100vh;
+    background: #687280;
+    padding: 20px 12px;
+    overflow-y: auto;
+}
 
-        .sidebar-title {
-            color: white;
-            font-size: 19px;
-            font-weight: bold;
-            margin: 0 8px 25px;
-            line-height: 1.4;
-        }
+.sidebar-title {
+    color: white;
+    font-size: 19px;
+    font-weight: bold;
+    margin: 0 8px 25px;
+    line-height: 1.4;
+}
 
-        .sidebar a {
-            display: block;
-            padding: 11px 13px;
-            margin-bottom: 5px;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 14px;
-        }
+.sidebar a {
+    display: block;
+    padding: 11px 13px;
+    margin-bottom: 5px;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    font-size: 14px;
+}
 
-        .sidebar a:hover,
-        .sidebar a.active {
-            background: #4f5965;
-        }
+.sidebar a:hover,
+.sidebar a.active {
+    background: #4f5965;
+}
 
-        .sidebar .logout {
-            margin-top: 20px;
-            background: #b42323;
-        }
+.sidebar .logout {
+    margin-top: 20px;
+    background: #b42323;
+}
 
-        .sidebar .logout:hover {
-            background: #941d1d;
-        }
+.sidebar .logout:hover {
+    background: #941d1d;
+}
 
-        .content {
-            margin-left: 220px;
-            padding: 30px;
-        }
+/* CONTENT */
 
-        .header-box {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 7px;
-            padding: 22px;
-            margin-bottom: 20px;
-        }
+.content {
+    margin-left: 220px;
+    padding: 30px;
+}
 
-        .header-box h1 {
-            font-size: 24px;
-            margin: 0;
-        }
+/* PANEL */
 
-        .header-box p {
-            color: #777;
-            margin: 8px 0 0;
-        }
+.card {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: none;
+}
 
-        .btn-tambah {
-            background: #9dff00;
-            border: 1px solid #9dff00;
-            color: #222;
-            font-weight: bold;
-        }
+.card-body {
+    padding: 20px;
+}
 
-        .btn-tambah:hover {
-            background: #8be000;
-            border-color: #8be000;
-            color: #222;
-        }
+/* BUTTON */
 
-        @media(max-width: 700px) {
+.btn-stabilo {
+    background: #9dff00;
+    color: #1a3300;
+    font-weight: bold;
+    border: none;
+}
 
-            .sidebar {
-                position: relative;
-                width: 100%;
-                height: auto;
-            }
+.btn-stabilo:hover {
+    background: #86e000;
+    color: #1a3300;
+}
 
-            .content {
-                margin-left: 0;
-                padding: 15px;
-            }
-        }
+/* TABLE */
 
-    </style>
+.table {
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+.table th,
+.table td {
+    padding: 10px;
+    vertical-align: middle;
+}
+
+/* PAGINATION */
+
+.page-link {
+    color: #687280;
+}
+
+.page-item.active .page-link {
+    background: #687280;
+    border-color: #687280;
+    color: white;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 700px) {
+
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+    }
+
+    .content {
+        margin-left: 0;
+        padding: 15px;
+    }
+}
+
+</style>
 
 </head>
 
@@ -521,35 +557,46 @@ if (!$data) {
         ⚖ Pelanggaran<br>Siswa
     </div>
 
-    <a href="dashboard.php"> Dashboard</a>
+    <a href="dashboard.php">Dashboard</a>
     <a href="kelola_siswa.php">Data Siswa</a>
     <a href="kelola_guru.php">Data Guru</a>
     <a href="kelola_kelas.php">Data Kelas</a>
     <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
     <a href="kelola_wali_kelas.php" class="active">Wali Kelas</a>
     <a href="penempatan_siswa.php">Penempatan Siswa</a>
-    <a href="kelola_pelanggaran_kategori.php"> Kategori Pelanggaran</a>
+    <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
     <a href="pelanggaran.php">Data Pelanggaran</a>
     <a href="tindakan.php">Data Tindakan</a>
     <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">ℹ About Me</a>
-    <a href="logout.php" class="logout"> Logout</a>
+    <a href="about_me.php">About Me</a>
+
+    <a href="logout.php" class="logout">Logout</a>
 
 </div>
 
-<!-- KONTEN -->
+
+<!-- CONTENT -->
 
 <div class="content">
 
-    <div class="header-box">
+    <!-- HEADER -->
 
-        <h1>Wali Kelas</h1>
+    <div class="card mb-3">
+        <div class="card-body">
 
-        <p>Kelola guru yang menjadi wali kelas.</p>
+            <h4 class="mb-1">Wali Kelas</h4>
 
+            <p class="text-muted mb-0">
+                Kelola guru yang menjadi wali kelas.
+            </p>
+
+        </div>
     </div>
 
-    <?php if ($error !== '') { ?>
+
+    <!-- PESAN ERROR -->
+
+    <?php if ($error != '') { ?>
 
         <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
@@ -557,68 +604,238 @@ if (!$data) {
 
     <?php } ?>
 
-    <div class="card shadow-sm mb-4">
 
-        <div class="card-body">
+    <!-- FORM TAMBAH -->
 
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <?php if ($tampil_form) { ?>
 
-                <h5 class="mb-0">Daftar Wali Kelas</h5>
+        <div class="card mb-3">
+            <div class="card-body">
 
-                <button
-                    type="button"
-                    class="btn btn-tambah"
-                    onclick="tampilkanForm()">
+                <h5 class="mb-3">Tambah Wali Kelas</h5>
 
-                    + Tambah Wali Kelas
+                <form method="POST">
 
-                </button>
+                    <input
+                        type="hidden"
+                        name="csrf_token"
+                        value="<?= htmlspecialchars($csrf_token); ?>"
+                    >
 
-            </div>
+                    <div class="row g-3">
 
-            <!-- PENCARIAN -->
+                        <div class="col-md-6">
 
-            <form method="GET" class="mb-3">
+                            <label class="form-label fw-bold">
+                                Guru
+                            </label>
 
-                <div class="row g-2">
+                            <select
+                                name="guru_id"
+                                class="form-select"
+                                required
+                            >
 
-                    <div class="col-md-5">
+                                <option value="">
+                                    -- Pilih Guru --
+                                </option>
 
-                        <input
-                            type="text"
-                            name="cari"
-                            class="form-control"
-                            placeholder="Cari guru, NIP, kelas, atau tahun ajaran..."
-                            value="<?= htmlspecialchars($cari); ?>">
+                                <?php while ($g = mysqli_fetch_assoc($guru_data)) { ?>
+
+                                    <option
+                                        value="<?= (int)$g['id']; ?>"
+                                        <?= (($_POST['guru_id'] ?? '') == $g['id']) ? 'selected' : ''; ?>
+                                    >
+                                        <?= htmlspecialchars($g['nip'] ?? '-'); ?>
+                                        - <?= htmlspecialchars($g['nama']); ?>
+                                    </option>
+
+                                <?php } ?>
+
+                            </select>
+
+                            <?php if (mysqli_num_rows($guru_data) == 0) { ?>
+
+                                <small class="text-danger">
+                                    Semua guru aktif sudah menjadi wali kelas pada tahun ajaran aktif.
+                                </small>
+
+                            <?php } ?>
+
+                        </div>
+
+
+                        <div class="col-md-6">
+
+                            <label class="form-label fw-bold">
+                                Tahun Ajaran
+                            </label>
+
+                            <select
+                                name="tahun_ajaran_id"
+                                id="tahun_ajaran_id"
+                                class="form-select"
+                                required
+                                onchange="ambilKelas()"
+                            >
+
+                                <option value="">
+                                    -- Pilih Tahun Ajaran --
+                                </option>
+
+                                <?php while ($t = mysqli_fetch_assoc($tahun_data)) { ?>
+
+                                    <option
+                                        value="<?= (int)$t['id']; ?>"
+                                        <?= (($_POST['tahun_ajaran_id'] ?? '') == $t['id']) ? 'selected' : ''; ?>
+                                    >
+                                        <?= htmlspecialchars($t['nama']); ?>
+                                    </option>
+
+                                <?php } ?>
+
+                            </select>
+
+                            <?php if ($jumlah_tahun_aktif == 0) { ?>
+
+                                <small class="text-danger">
+                                    Belum ada tahun ajaran aktif. Aktifkan tahun ajaran terlebih dahulu.
+                                </small>
+
+                            <?php } ?>
+
+                        </div>
+
+
+                        <div class="col-md-6">
+
+                            <label class="form-label fw-bold">
+                                Kelas
+                            </label>
+
+                            <select
+                                name="kelas_id"
+                                id="kelas_id"
+                                class="form-select"
+                                required
+                                disabled
+                            >
+
+                                <option value="">
+                                    -- Pilih tahun ajaran terlebih dahulu --
+                                </option>
+
+                            </select>
+
+                            <small class="text-muted">
+                                Kelas yang sudah memiliki wali kelas pada tahun ajaran terpilih tidak akan ditampilkan.
+                            </small>
+
+                        </div>
 
                     </div>
 
-                    <div class="col-auto">
 
-                        <button type="submit" class="btn btn-primary">
-                            Cari
+                    <div class="mt-3">
+
+                        <button
+                            type="submit"
+                            name="simpan"
+                            class="btn btn-stabilo btn-sm"
+                            <?= ($jumlah_tahun_aktif == 0) ? 'disabled' : ''; ?>
+                        >
+                            Simpan
                         </button>
 
-                        <a href="kelola_wali_kelas.php" class="btn btn-secondary">
-                            Reset
+                        <a
+                            href="kelola_wali_kelas.php"
+                            class="btn btn-outline-secondary btn-sm"
+                        >
+                            Batal
                         </a>
 
                     </div>
+
+                </form>
+
+            </div>
+        </div>
+
+    <?php } ?>
+
+
+    <!-- DAFTAR WALI KELAS -->
+
+    <div class="card">
+
+        <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+
+                <h5 class="mb-0">Daftar Wali Kelas</h5>
+
+                <?php if (!$tampil_form) { ?>
+
+                    <a
+                        href="kelola_wali_kelas.php?tambah=1"
+                        class="btn btn-sm btn-stabilo"
+                    >
+                        + Tambah Wali Kelas
+                    </a>
+
+                <?php } ?>
+
+            </div>
+
+
+            <!-- PENCARIAN -->
+
+            <form method="GET" class="row g-2 mb-3">
+
+                <div class="col-md-5">
+
+                    <input
+                        type="text"
+                        name="cari"
+                        class="form-control form-control-sm"
+                        placeholder="Cari guru, NIP, kelas, atau tahun ajaran..."
+                        value="<?= htmlspecialchars($cari); ?>"
+                    >
+
+                </div>
+
+                <div class="col-auto">
+
+                    <button type="submit" class="btn btn-secondary btn-sm">
+                        Cari
+                    </button>
+
+                    <?php if ($cari != '') { ?>
+
+                        <a
+                            href="kelola_wali_kelas.php"
+                            class="btn btn-outline-secondary btn-sm"
+                        >
+                            Reset
+                        </a>
+
+                    <?php } ?>
 
                 </div>
 
             </form>
 
-            <!-- TABEL -->
+
+            <!-- TABEL WALI KELAS -->
 
             <div class="table-responsive">
 
-                <table class="table table-bordered table-striped table-hover align-middle">
+                <table class="table table-bordered table-hover align-middle">
 
-                    <thead class="table-dark">
+                    <thead class="table-secondary">
 
                         <tr>
-                            <th>No</th>
+                            <th width="55">No</th>
                             <th>NIP</th>
                             <th>Nama Guru</th>
                             <th>Kelas</th>
@@ -631,108 +848,101 @@ if (!$data) {
 
                     <tbody>
 
-                    <?php
+                    <?php if ($data && mysqli_num_rows($data) > 0) { ?>
 
-                    $no = $mulai + 1;
+                        <?php $no = $mulai + 1; ?>
 
-                    if (mysqli_num_rows($data) > 0) {
+                        <?php while ($row = mysqli_fetch_assoc($data)) { ?>
 
-                        while ($row = mysqli_fetch_assoc($data)) {
+                            <tr>
 
-                    ?>
+                                <td><?= $no++; ?></td>
 
-                        <tr>
+                                <td>
+                                    <?= htmlspecialchars($row['nip'] ?? '-'); ?>
+                                </td>
 
-                            <td><?= $no++; ?></td>
+                                <td>
+                                    <strong>
+                                        <?= htmlspecialchars($row['nama_guru']); ?>
+                                    </strong>
+                                </td>
 
-                            <td>
-                                <?= htmlspecialchars($row['nip'] ?? '-'); ?>
-                            </td>
+                                <td>
+                                    <?= htmlspecialchars($row['nama_kelas']); ?>
+                                </td>
 
-                            <td>
-                                <b><?= htmlspecialchars($row['nama_guru']); ?></b>
-                            </td>
+                                <td>
+                                    <?= htmlspecialchars($row['nama_tahun']); ?>
+                                </td>
 
-                            <td>
-                                <?= htmlspecialchars($row['nama_kelas']); ?>
-                            </td>
+                                <td>
 
-                            <td>
-                                <?= htmlspecialchars($row['nama_tahun']); ?>
-                            </td>
+                                    <?php if ($row['aktif'] == 1) { ?>
 
-                            <td>
+                                        <span class="badge bg-success">
+                                            Aktif
+                                        </span>
 
-                                <?php if ($row['aktif'] == 1) { ?>
+                                    <?php } else { ?>
 
-                                    <span class="badge bg-success">
-                                        Aktif
-                                    </span>
+                                        <span class="badge bg-danger">
+                                            Tidak Aktif
+                                        </span>
 
-                                <?php } else { ?>
+                                    <?php } ?>
 
-                                    <span class="badge bg-danger">
-                                        Tidak Aktif
-                                    </span>
+                                </td>
 
-                                <?php } ?>
+                                <td>
 
-                            </td>
+                                    <a
+                                        href="edit_wali_kelas.php?id=<?= (int)$row['id']; ?>"
+                                        class="btn btn-sm btn-stabilo"
+                                    >
+                                        Edit
+                                    </a>
 
-                            <td>
+                                    <form
+                                        method="POST"
+                                        style="display:inline;"
+                                        onsubmit="return confirm('Yakin ingin menghapus wali kelas ini?')"
+                                    >
 
-                                <a
-                                    href="edit_wali_kelas.php?id=<?= $row['id']; ?>"
-                                    class="btn btn-sm btn-tambah">
+                                        <input
+                                            type="hidden"
+                                            name="csrf_token"
+                                            value="<?= htmlspecialchars($csrf_token); ?>"
+                                        >
 
-                                    Edit
+                                        <input
+                                            type="hidden"
+                                            name="id"
+                                            value="<?= (int)$row['id']; ?>"
+                                        >
 
-                                </a>
+                                        <button
+                                            type="submit"
+                                            name="hapus"
+                                            class="btn btn-sm btn-danger"
+                                        >
+                                            Hapus
+                                        </button>
 
-                                <form
-                                    method="POST"
-                                    class="d-inline"
-                                    onsubmit="return confirm('Yakin ingin menghapus wali kelas ini?');">
+                                    </form>
 
-                                    <input
-                                        type="hidden"
-                                        name="csrf_token"
-                                        value="<?= htmlspecialchars($csrf_token); ?>">
+                                </td>
 
-                                    <input
-                                        type="hidden"
-                                        name="id"
-                                        value="<?= $row['id']; ?>">
+                            </tr>
 
-                                    <button
-                                        type="submit"
-                                        name="hapus"
-                                        class="btn btn-sm btn-danger">
+                        <?php } ?>
 
-                                        Hapus
-
-                                    </button>
-
-                                </form>
-
-                            </td>
-
-                        </tr>
-
-                    <?php
-
-                        }
-
-                    } else {
-
-                    ?>
+                    <?php } else { ?>
 
                         <tr>
-
-                            <td colspan="7" class="text-center">
+                            <td colspan="7" class="text-center py-4">
                                 Data wali kelas tidak ditemukan.
                             </td>
-
                         </tr>
 
                     <?php } ?>
@@ -743,24 +953,71 @@ if (!$data) {
 
             </div>
 
+
+            <!-- INFORMASI DATA -->
+
+            <div class="text-muted small">
+
+                Menampilkan
+                <?= $total_data > 0 ? $mulai + 1 : 0; ?>
+                -
+                <?= min($mulai + $per_halaman, $total_data); ?>
+                dari
+                <?= $total_data; ?>
+                data wali kelas.
+
+            </div>
+
+
             <!-- PAGINATION -->
 
             <?php if ($total_halaman > 1) { ?>
 
-                <nav>
+                <nav class="mt-3">
 
-                    <ul class="pagination justify-content-center mb-0">
+                    <ul class="pagination pagination-sm mb-0">
 
-                        <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+                        <?php if ($halaman > 1) { ?>
 
-                            <li class="page-item <?= ($halaman == $i) ? 'active' : ''; ?>">
+                            <li class="page-item">
 
                                 <a
                                     class="page-link"
-                                    href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>">
+                                    href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    &laquo;
+                                </a>
 
+                            </li>
+
+                        <?php } ?>
+
+
+                        <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+
+                            <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
+
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>"
+                                >
                                     <?= $i; ?>
+                                </a>
 
+                            </li>
+
+                        <?php } ?>
+
+
+                        <?php if ($halaman < $total_halaman) { ?>
+
+                            <li class="page-item">
+
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    &raquo;
                                 </a>
 
                             </li>
@@ -777,179 +1034,10 @@ if (!$data) {
 
     </div>
 
-    <!-- FORM TAMBAH -->
-
-    <div class="card shadow-sm mb-4" id="form-tambah" style="display:none;">
-
-        <div class="card-body">
-
-            <h5 class="mb-3">Tambah Wali Kelas</h5>
-
-            <form method="POST">
-
-                <input
-                    type="hidden"
-                    name="csrf_token"
-                    value="<?= htmlspecialchars($csrf_token); ?>">
-
-                <div class="row g-3">
-
-                    <!-- GURU -->
-
-                    <div class="col-md-6">
-
-                        <label class="form-label">
-                            Guru
-                        </label>
-
-                        <select
-                            name="guru_id"
-                            class="form-select"
-                            required>
-
-                            <option value="">
-                                -- Pilih Guru --
-                            </option>
-
-                            <?php while ($g = mysqli_fetch_assoc($guru_data)) { ?>
-
-                                <option value="<?= $g['id']; ?>">
-
-                                    <?= htmlspecialchars($g['nip'] ?? '-'); ?>
-                                    - <?= htmlspecialchars($g['nama']); ?>
-
-                                </option>
-
-                            <?php } ?>
-
-                        </select>
-
-                        <?php if (mysqli_num_rows($guru_data) == 0) { ?>
-
-                            <small class="text-danger">
-                                Semua guru aktif sudah menjadi wali kelas pada tahun ajaran aktif.
-                            </small>
-
-                        <?php } ?>
-
-                    </div>
-
-                    <!-- TAHUN AJARAN -->
-
-                    <div class="col-md-6">
-
-                        <label class="form-label">
-                            Tahun Ajaran
-                        </label>
-
-                        <select
-                            name="tahun_ajaran_id"
-                            id="tahun_ajaran_id"
-                            class="form-select"
-                            required
-                            onchange="ambilKelas()">
-
-                            <option value="">
-                                -- Pilih Tahun Ajaran --
-                            </option>
-
-                            <?php while ($t = mysqli_fetch_assoc($tahun_data)) { ?>
-
-                                <option value="<?= $t['id']; ?>">
-                                    <?= htmlspecialchars($t['nama']); ?>
-                                </option>
-
-                            <?php } ?>
-
-                        </select>
-
-                        <?php if ($jumlah_tahun_aktif == 0) { ?>
-
-                            <small class="text-danger">
-                                Belum ada tahun ajaran aktif. Aktifkan tahun ajaran terlebih dahulu.
-                            </small>
-
-                        <?php } ?>
-
-                    </div>
-
-                    <!-- KELAS -->
-
-                    <div class="col-md-12">
-
-                        <label class="form-label">
-                            Kelas
-                        </label>
-
-                        <select
-                            name="kelas_id"
-                            id="kelas_id"
-                            class="form-select"
-                            required
-                            disabled>
-
-                            <option value="">
-                                -- Pilih tahun ajaran terlebih dahulu --
-                            </option>
-
-                        </select>
-
-                        <small class="text-muted">
-                            Kelas yang sudah memiliki wali kelas pada tahun ajaran terpilih tidak akan ditampilkan.
-                        </small>
-
-                    </div>
-
-                </div>
-
-                <div class="mt-4">
-
-                    <button
-                        type="submit"
-                        name="simpan"
-                        class="btn btn-primary"
-                        <?= ($jumlah_tahun_aktif == 0) ? 'disabled' : ''; ?>>
-
-                        Simpan
-
-                    </button>
-
-                    <button
-                        type="button"
-                        class="btn btn-secondary"
-                        onclick="sembunyikanForm()">
-
-                        Batal
-
-                    </button>
-
-                </div>
-
-            </form>
-
-        </div>
-
-    </div>
-
 </div>
 
+
 <script>
-
-function tampilkanForm() {
-
-    document.getElementById("form-tambah").style.display = "block";
-
-    document.getElementById("form-tambah").scrollIntoView({
-        behavior: "smooth"
-    });
-
-}
-
-function sembunyikanForm() {
-
-    document.getElementById("form-tambah").style.display = "none";
-
-}
 
 function ambilKelas() {
 

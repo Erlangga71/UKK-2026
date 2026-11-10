@@ -3,46 +3,66 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once "database.php";
+require_once "auth.php";
 
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
-}
-
-if (($_SESSION['role'] ?? '') !== 'admin') {
-    die("Akses ditolak.");
-}
+hanyaRole(['admin']);
 
 $error = "";
+$tampil_form = isset($_GET['tambah']) && $_GET['tambah'] == '1';
 
 /* =========================
    TAMBAH PENEMPATAN
 ========================= */
 
 if (isset($_POST['simpan'])) {
+
+    $tampil_form = true;
+
     $siswa_id = (int)($_POST['siswa_id'] ?? 0);
     $kelas_id = (int)($_POST['kelas_id'] ?? 0);
     $tahun_ajaran_id = (int)($_POST['tahun_ajaran_id'] ?? 0);
 
     if ($siswa_id <= 0 || $kelas_id <= 0 || $tahun_ajaran_id <= 0) {
+
         $error = "Semua data wajib dipilih.";
+
     } else {
+
         $cek = mysqli_prepare(
             $koneksi,
             "SELECT id FROM penempatan_siswa
-             WHERE siswa_id = ? AND kelas_id = ? AND tahun_ajaran_id = ?
+             WHERE siswa_id = ?
+             AND kelas_id = ?
+             AND tahun_ajaran_id = ?
              LIMIT 1"
         );
 
-        mysqli_stmt_bind_param($cek, "iii", $siswa_id, $kelas_id, $tahun_ajaran_id);
+        mysqli_stmt_bind_param(
+            $cek,
+            "iii",
+            $siswa_id,
+            $kelas_id,
+            $tahun_ajaran_id
+        );
+
         mysqli_stmt_execute($cek);
         $hasil_cek = mysqli_stmt_get_result($cek);
 
-        if (mysqli_num_rows($hasil_cek) > 0) {
+        $sudah_ada = mysqli_num_rows($hasil_cek) > 0;
+
+        mysqli_stmt_close($cek);
+
+        if ($sudah_ada) {
+
             $error = "Penempatan siswa tersebut sudah ada.";
+
         } else {
+
             $stmt = mysqli_prepare(
                 $koneksi,
                 "INSERT INTO penempatan_siswa
@@ -50,13 +70,27 @@ if (isset($_POST['simpan'])) {
                  VALUES (?, ?, ?)"
             );
 
-            mysqli_stmt_bind_param($stmt, "iii", $siswa_id, $kelas_id, $tahun_ajaran_id);
+            mysqli_stmt_bind_param(
+                $stmt,
+                "iii",
+                $siswa_id,
+                $kelas_id,
+                $tahun_ajaran_id
+            );
 
             if (mysqli_stmt_execute($stmt)) {
+
+                mysqli_stmt_close($stmt);
+
                 header("Location: penempatan_siswa.php");
                 exit;
+
             } else {
-                $error = "Gagal menyimpan penempatan: " . mysqli_error($koneksi);
+
+                $error = "Gagal menyimpan penempatan: " .
+                         mysqli_stmt_error($stmt);
+
+                mysqli_stmt_close($stmt);
             }
         }
     }
@@ -67,9 +101,11 @@ if (isset($_POST['simpan'])) {
 ========================= */
 
 if (isset($_GET['hapus'])) {
+
     $id = (int)$_GET['hapus'];
 
     if ($id > 0) {
+
         $stmt = mysqli_prepare(
             $koneksi,
             "DELETE FROM penempatan_siswa WHERE id = ?"
@@ -77,6 +113,7 @@ if (isset($_GET['hapus'])) {
 
         mysqli_stmt_bind_param($stmt, "i", $id);
         mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
     }
 
     header("Location: penempatan_siswa.php");
@@ -116,6 +153,18 @@ $tahun = mysqli_query(
 $cari = trim($_GET['cari'] ?? '');
 $cari_sql = "%" . $cari . "%";
 
+/* =========================
+   PAGINATION
+========================= */
+
+$batas = 10;
+
+$halaman = max(1, (int)($_GET['halaman'] ?? 1));
+
+/* =========================
+   HITUNG DATA
+========================= */
+
 $stmt_total = mysqli_prepare(
     $koneksi,
     "SELECT COUNT(*) AS total
@@ -139,22 +188,26 @@ mysqli_stmt_bind_param(
 );
 
 mysqli_stmt_execute($stmt_total);
-$total_data = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt_total))['total'];
+
+$total_data = (int)mysqli_fetch_assoc(
+    mysqli_stmt_get_result($stmt_total)
+)['total'];
+
+mysqli_stmt_close($stmt_total);
+
+$total_halaman = max(
+    1,
+    (int)ceil($total_data / $batas)
+);
+
+if ($halaman > $total_halaman) {
+    $halaman = $total_halaman;
+}
+
+$mulai = ($halaman - 1) * $batas;
 
 /* =========================
-   PAGINATION
-========================= */
-
-$batas = 5;
-$total_halaman = max(1, (int)ceil($total_data / $batas));
-
-$halaman = max(1, (int)($_GET['halaman'] ?? 1));
-$halaman = min($halaman, $total_halaman);
-
-$offset = ($halaman - 1) * $batas;
-
-/* =========================
-   DATA PENEMPATAN
+   AMBIL DATA PENEMPATAN
 ========================= */
 
 $stmt_data = mysqli_prepare(
@@ -174,7 +227,7 @@ $stmt_data = mysqli_prepare(
         OR k.nama_kelas LIKE ?
         OR t.nama LIKE ?
      ORDER BY p.id DESC
-     LIMIT ? OFFSET ?"
+     LIMIT ?, ?"
 );
 
 mysqli_stmt_bind_param(
@@ -184,349 +237,575 @@ mysqli_stmt_bind_param(
     $cari_sql,
     $cari_sql,
     $cari_sql,
-    $batas,
-    $offset
+    $mulai,
+    $batas
 );
 
 mysqli_stmt_execute($stmt_data);
 $data = mysqli_stmt_get_result($stmt_data);
+
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Penempatan Siswa</title>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <style>
-        body {
-            margin: 0;
-            background: #f4f6f8;
-            font-family: Arial, sans-serif;
-            color: #333;
-        }
+<title>Penempatan Siswa</title>
 
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 220px;
-            height: 100vh;
-            padding: 20px 12px;
-            background: #687280;
-            overflow-y: auto;
-        }
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-        .sidebar-title {
-            color: white;
-            font-size: 19px;
-            font-weight: bold;
-            margin: 0 8px 25px;
-            line-height: 1.4;
-        }
+<style>
 
-        .sidebar a {
-            display: block;
-            padding: 11px 13px;
-            margin-bottom: 5px;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 14px;
-        }
+body {
+    margin: 0;
+    background: #f4f6f8;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    color: #212529;
+}
 
-        .sidebar a:hover,
-        .sidebar a.active {
-            background: #4f5965;
-        }
+/* SIDEBAR */
 
-        .sidebar .logout {
-            margin-top: 20px;
-            background: #b42323;
-        }
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 220px;
+    height: 100vh;
+    background: #687280;
+    padding: 20px 12px;
+    overflow-y: auto;
+}
 
-        .content {
-            margin-left: 220px;
-            padding: 30px;
-        }
+.sidebar-title {
+    color: white;
+    font-size: 19px;
+    font-weight: bold;
+    margin: 0 8px 25px;
+    line-height: 1.4;
+}
 
-        .header,
-        .box {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 7px;
-            padding: 22px;
-            margin-bottom: 20px;
-        }
+.sidebar a {
+    display: block;
+    padding: 11px 13px;
+    margin-bottom: 5px;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    font-size: 14px;
+}
 
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+.sidebar a:hover,
+.sidebar a.active {
+    background: #4f5965;
+}
 
-        .header h1 {
-            font-size: 24px;
-            margin: 0;
-        }
+.sidebar .logout {
+    margin-top: 20px;
+    background: #b42323;
+}
 
-        .header p {
-            color: #777;
-            margin: 5px 0 0;
-        }
+.sidebar .logout:hover {
+    background: #941d1d;
+}
 
-        .btn-tambah {
-            background: #9dff00;
-            border: 1px solid #9dff00;
-            color: #222;
-            font-weight: bold;
-        }
+/* CONTENT */
 
-        .btn-tambah:hover {
-            background: #8be000;
-            border-color: #8be000;
-            color: #222;
-        }
+.content {
+    margin-left: 220px;
+    padding: 30px;
+}
 
-        .btn-hapus {
-            background: #b42323;
-            color: white;
-        }
+/* PANEL */
 
-        .btn-hapus:hover {
-            background: #941d1d;
-            color: white;
-        }
+.card {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: none;
+}
 
-        .table thead th {
-            background: #687280;
-            color: white;
-            white-space: nowrap;
-        }
+.card-body {
+    padding: 20px;
+}
 
-        .table td {
-            vertical-align: middle;
-        }
+/* BUTTON */
 
-        .pagination .page-link {
-            color: #333;
-        }
+.btn-stabilo {
+    background: #9dff00;
+    color: #1a3300;
+    font-weight: bold;
+    border: none;
+}
 
-        .pagination .active .page-link {
-            background: #687280;
-            border-color: #687280;
-            color: white;
-        }
+.btn-stabilo:hover {
+    background: #86e000;
+    color: #1a3300;
+}
 
-        @media(max-width: 700px) {
-            .sidebar {
-                position: relative;
-                width: 100%;
-                height: auto;
-            }
+/* TABLE */
 
-            .content {
-                margin-left: 0;
-                padding: 15px;
-            }
+.table {
+    font-size: 12px;
+    margin-bottom: 10px;
+}
 
-            .header {
-                display: block;
-            }
+.table th,
+.table td {
+    padding: 10px;
+    vertical-align: middle;
+}
 
-            .header .btn {
-                margin-top: 15px;
-            }
-        }
-    </style>
+/* PAGINATION */
+
+.page-link {
+    color: #687280;
+}
+
+.page-item.active .page-link {
+    background: #687280;
+    border-color: #687280;
+    color: white;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 700px) {
+
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+    }
+
+    .content {
+        margin-left: 0;
+        padding: 15px;
+    }
+}
+
+</style>
+
 </head>
 
 <body>
 
-<div class="sidebar">
-    <div class="sidebar-title">⚖ Pelanggaran<br>Siswa</div>
+<!-- SIDEBAR -->
 
-    <a href="dashboard.php"> Dashboard</a>
+<div class="sidebar">
+
+    <div class="sidebar-title">
+        ⚖ Pelanggaran<br>Siswa
+    </div>
+
+    <a href="dashboard.php">Dashboard</a>
     <a href="kelola_siswa.php">Data Siswa</a>
     <a href="kelola_guru.php">Data Guru</a>
     <a href="kelola_kelas.php">Data Kelas</a>
     <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
     <a href="kelola_wali_kelas.php">Wali Kelas</a>
     <a href="penempatan_siswa.php" class="active">Penempatan Siswa</a>
-    <a href="kelola_pelanggaran_kategori.php"> Kategori Pelanggaran</a>
+    <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
     <a href="pelanggaran.php">Data Pelanggaran</a>
     <a href="tindakan.php">Data Tindakan</a>
     <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">ℹ About Me</a>
-    <a href="logout.php" class="logout"> Logout</a>
+    <a href="about_me.php">About Me</a>
+
+    <a href="logout.php" class="logout">Logout</a>
+
 </div>
+
+<!-- CONTENT -->
 
 <div class="content">
 
-    <div class="header">
-        <div>
-            <h1>Penempatan Siswa</h1>
-            <p>Mengatur siswa ke kelas dan tahun ajaran.</p>
+    <!-- HEADER -->
+
+    <div class="card mb-3">
+
+        <div class="card-body">
+
+            <h4 class="mb-1">Penempatan Siswa</h4>
+
+            <p class="text-muted mb-0">
+                Mengatur siswa ke kelas dan tahun ajaran.
+            </p>
+
         </div>
 
-        <a href="penempatan_siswa.php?tambah=1" class="btn btn-tambah">
-            + Tambah Penempatan
-        </a>
     </div>
 
-    <?php if ($error != ""): ?>
+    <!-- PESAN ERROR -->
+
+    <?php if ($error != '') { ?>
+
         <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
         </div>
-    <?php endif; ?>
 
-    <?php if (isset($_GET['tambah']) && $_GET['tambah'] == '1'): ?>
-        <div class="box">
-            <h5 class="mb-3">Tambah Penempatan Siswa</h5>
+    <?php } ?>
 
-            <form method="POST">
-                <div class="mb-3">
-                    <label class="form-label">Siswa</label>
-                    <select name="siswa_id" class="form-select" required>
-                        <option value="">-- Pilih Siswa --</option>
-                        <?php while ($s = mysqli_fetch_assoc($siswa)): ?>
-                            <option value="<?= $s['id']; ?>">
-                                <?= htmlspecialchars($s['nis'] . " - " . $s['nama']); ?>
-                            </option>
-                        <?php endwhile; ?>
-                    </select>
-                </div>
+    <!-- FORM TAMBAH -->
 
-                <div class="mb-3">
-                    <label class="form-label">Kelas</label>
-                    <select name="kelas_id" class="form-select" required>
-                        <option value="">-- Pilih Kelas --</option>
-                        <?php while ($k = mysqli_fetch_assoc($kelas)): ?>
-                            <option value="<?= $k['id']; ?>">
-                                <?= htmlspecialchars($k['nama_kelas']); ?>
-                            </option>
-                        <?php endwhile; ?>
-                    </select>
-                </div>
+    <?php if ($tampil_form) { ?>
 
-                <div class="mb-3">
-                    <label class="form-label">Tahun Ajaran</label>
-                    <select name="tahun_ajaran_id" class="form-select" required>
-                        <option value="">-- Pilih Tahun Ajaran --</option>
-                        <?php while ($t = mysqli_fetch_assoc($tahun)): ?>
-                            <option value="<?= $t['id']; ?>">
-                                <?= htmlspecialchars($t['nama']); ?>
-                                <?= ((int)$t['aktif'] === 1) ? '(Aktif)' : ''; ?>
-                            </option>
-                        <?php endwhile; ?>
-                    </select>
-                </div>
+        <div class="card mb-3">
 
-                <button type="submit" name="simpan" class="btn btn-tambah">
-                    Simpan Penempatan
-                </button>
+            <div class="card-body">
 
-                <a href="penempatan_siswa.php" class="btn btn-secondary">
-                    Batal
-                </a>
-            </form>
+                <h5 class="mb-3">Tambah Penempatan Siswa</h5>
+
+                <form method="POST">
+
+                    <div class="row g-3">
+
+                        <div class="col-md-6">
+
+                            <label class="form-label fw-bold">
+                                Siswa
+                            </label>
+
+                            <select
+                                name="siswa_id"
+                                class="form-select"
+                                required
+                            >
+
+                                <option value="">
+                                    -- Pilih Siswa --
+                                </option>
+
+                                <?php while ($s = mysqli_fetch_assoc($siswa)) { ?>
+
+                                    <option value="<?= (int)$s['id']; ?>">
+                                        <?= htmlspecialchars($s['nis'] . " - " . $s['nama']); ?>
+                                    </option>
+
+                                <?php } ?>
+
+                            </select>
+
+                        </div>
+
+                        <div class="col-md-6">
+
+                            <label class="form-label fw-bold">
+                                Kelas
+                            </label>
+
+                            <select
+                                name="kelas_id"
+                                class="form-select"
+                                required
+                            >
+
+                                <option value="">
+                                    -- Pilih Kelas --
+                                </option>
+
+                                <?php while ($k = mysqli_fetch_assoc($kelas)) { ?>
+
+                                    <option value="<?= (int)$k['id']; ?>">
+                                        <?= htmlspecialchars($k['nama_kelas']); ?>
+                                    </option>
+
+                                <?php } ?>
+
+                            </select>
+
+                        </div>
+
+                        <div class="col-md-6">
+
+                            <label class="form-label fw-bold">
+                                Tahun Ajaran
+                            </label>
+
+                            <select
+                                name="tahun_ajaran_id"
+                                class="form-select"
+                                required
+                            >
+
+                                <option value="">
+                                    -- Pilih Tahun Ajaran --
+                                </option>
+
+                                <?php while ($t = mysqli_fetch_assoc($tahun)) { ?>
+
+                                    <option value="<?= (int)$t['id']; ?>">
+                                        <?= htmlspecialchars($t['nama']); ?>
+                                        <?= ((int)$t['aktif'] === 1) ? '(Aktif)' : ''; ?>
+                                    </option>
+
+                                <?php } ?>
+
+                            </select>
+
+                        </div>
+
+                    </div>
+
+                    <div class="mt-3">
+
+                        <button
+                            type="submit"
+                            name="simpan"
+                            class="btn btn-stabilo btn-sm"
+                        >
+                            Simpan Penempatan
+                        </button>
+
+                        <a
+                            href="penempatan_siswa.php"
+                            class="btn btn-outline-secondary btn-sm"
+                        >
+                            Batal
+                        </a>
+
+                    </div>
+
+                </form>
+
+            </div>
+
         </div>
-    <?php endif; ?>
 
-    <div class="box">
-        <h5 class="mb-3">Daftar Penempatan Siswa</h5>
+    <?php } ?>
 
-        <form method="GET" class="row g-2 mb-3">
-            <div class="col-md-5">
-                <input
-                    type="text"
-                    name="cari"
-                    class="form-control"
-                    placeholder="Cari NIS, nama siswa, kelas..."
-                    value="<?= htmlspecialchars($cari); ?>"
-                >
+    <!-- DAFTAR PENEMPATAN -->
+
+    <div class="card">
+
+        <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+
+                <h5 class="mb-0">Daftar Penempatan Siswa</h5>
+
+                <?php if (!$tampil_form) { ?>
+
+                    <a
+                        href="penempatan_siswa.php?tambah=1"
+                        class="btn btn-sm btn-stabilo"
+                    >
+                        + Tambah Penempatan
+                    </a>
+
+                <?php } ?>
+
             </div>
 
-            <div class="col-auto">
-                <button type="submit" class="btn btn-secondary">Cari</button>
-                <a href="penempatan_siswa.php" class="btn btn-outline-secondary">Reset</a>
-            </div>
-        </form>
+            <!-- PENCARIAN -->
 
-        <div class="table-responsive">
-            <table class="table table-bordered table-hover">
-                <thead>
-                    <tr>
-                        <th>No</th>
-                        <th>NIS</th>
-                        <th>Nama Siswa</th>
-                        <th>Kelas</th>
-                        <th>Tahun Ajaran</th>
-                        <th>Aksi</th>
-                    </tr>
-                </thead>
+            <form method="GET" class="row g-2 mb-3">
 
-                <tbody>
-                    <?php if ($data && mysqli_num_rows($data) > 0): ?>
-                        <?php $no = $offset + 1; ?>
+                <div class="col-md-5">
 
-                        <?php while ($row = mysqli_fetch_assoc($data)): ?>
-                            <tr>
-                                <td><?= $no++; ?></td>
-                                <td><?= htmlspecialchars($row['nis']); ?></td>
-                                <td><?= htmlspecialchars($row['nama_siswa']); ?></td>
-                                <td><?= htmlspecialchars($row['nama_kelas']); ?></td>
-                                <td><?= htmlspecialchars($row['tahun_ajaran']); ?></td>
-                                <td class="text-nowrap">
-                                    <a
-                                        href="edit_penempatan_siswa.php?id=<?= $row['id']; ?>"
-                                        class="btn btn-sm btn-tambah"
-                                    >Edit</a>
+                    <input
+                        type="text"
+                        name="cari"
+                        class="form-control form-control-sm"
+                        placeholder="Cari NIS, nama siswa, kelas, atau tahun ajaran..."
+                        value="<?= htmlspecialchars($cari); ?>"
+                    >
 
-                                    <a
-                                        href="penempatan_siswa.php?hapus=<?= $row['id']; ?>"
-                                        class="btn btn-sm btn-hapus"
-                                        onclick="return confirm('Yakin ingin menghapus penempatan ini?')"
-                                    >Hapus</a>
-                                </td>
-                            </tr>
-                        <?php endwhile; ?>
+                </div>
 
-                    <?php else: ?>
+                <div class="col-auto">
+
+                    <button type="submit" class="btn btn-secondary btn-sm">
+                        Cari
+                    </button>
+
+                    <?php if ($cari != '') { ?>
+
+                        <a
+                            href="penempatan_siswa.php"
+                            class="btn btn-outline-secondary btn-sm"
+                        >
+                            Reset
+                        </a>
+
+                    <?php } ?>
+
+                </div>
+
+            </form>
+
+            <!-- TABEL PENEMPATAN -->
+
+            <div class="table-responsive">
+
+                <table class="table table-bordered table-hover align-middle">
+
+                    <thead class="table-secondary">
+
                         <tr>
+                            <th width="55">No</th>
+                            <th>NIS</th>
+                            <th>Nama Siswa</th>
+                            <th>Kelas</th>
+                            <th>Tahun Ajaran</th>
+                            <th width="150">Aksi</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                    <?php if ($data && $data->num_rows > 0) { ?>
+
+                        <?php $no = $mulai + 1; ?>
+
+                        <?php while ($row = mysqli_fetch_assoc($data)) { ?>
+
+                            <tr>
+
+                                <td><?= $no++; ?></td>
+
+                                <td>
+                                    <?= htmlspecialchars($row['nis']); ?>
+                                </td>
+
+                                <td>
+                                    <?= htmlspecialchars($row['nama_siswa']); ?>
+                                </td>
+
+                                <td>
+                                    <?= htmlspecialchars($row['nama_kelas']); ?>
+                                </td>
+
+                                <td>
+                                    <?= htmlspecialchars($row['tahun_ajaran']); ?>
+                                </td>
+
+                                <td class="text-nowrap">
+
+                                    <a
+                                        href="edit_penempatan_siswa.php?id=<?= (int)$row['id']; ?>"
+                                        class="btn btn-sm btn-stabilo"
+                                    >
+                                        Edit
+                                    </a>
+
+                                    <a
+                                        href="penempatan_siswa.php?hapus=<?= (int)$row['id']; ?>"
+                                        class="btn btn-sm btn-danger"
+                                        onclick="return confirm('Yakin ingin menghapus penempatan ini?')"
+                                    >
+                                        Hapus
+                                    </a>
+
+                                </td>
+
+                            </tr>
+
+                        <?php } ?>
+
+                    <?php } else { ?>
+
+                        <tr>
+
                             <td colspan="6" class="text-center py-4">
                                 Belum ada data penempatan siswa.
                             </td>
+
                         </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+
+                    <?php } ?>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            <!-- INFORMASI DATA -->
+
+            <div class="text-muted small">
+
+                Menampilkan
+                <?= $total_data > 0 ? $mulai + 1 : 0; ?>
+                -
+                <?= min($mulai + $batas, $total_data); ?>
+                dari
+                <?= $total_data; ?>
+                data penempatan siswa.
+
+            </div>
+
+            <!-- PAGINATION -->
+
+            <?php if ($total_halaman > 1) { ?>
+
+                <nav class="mt-3">
+
+                    <ul class="pagination pagination-sm mb-0">
+
+                        <?php if ($halaman > 1) { ?>
+
+                            <li class="page-item">
+
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    &laquo;
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+                        <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+
+                            <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
+
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    <?= $i; ?>
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+                        <?php if ($halaman < $total_halaman) { ?>
+
+                            <li class="page-item">
+
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    &raquo;
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+                    </ul>
+
+                </nav>
+
+            <?php } ?>
+
         </div>
 
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <small class="text-muted">
-                Total <?= $total_data; ?> data
-            </small>
-
-            <nav>
-                <ul class="pagination pagination-sm mb-0">
-                    <?php for ($i = 1; $i <= $total_halaman; $i++): ?>
-                        <li class="page-item <?= ($halaman == $i) ? 'active' : ''; ?>">
-                            <a
-                                class="page-link"
-                                href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>"
-                            ><?= $i; ?></a>
-                        </li>
-                    <?php endfor; ?>
-                </ul>
-            </nav>
-        </div>
     </div>
 
 </div>
 
 </body>
 </html>
+
+<?php
+mysqli_stmt_close($stmt_data);
+?>

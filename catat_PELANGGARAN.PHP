@@ -329,7 +329,7 @@ if (!$query_jenis) {
     <nav class="nav flex-column">
 
         <a href="dashboard.php" class="nav-link">
-            🏠 Dashboard
+             Dashboard
         </a>
 
         <?php if ($role === 'admin'): ?>
@@ -371,7 +371,7 @@ if (!$query_jenis) {
         <?php endif; ?>
 
         <a href="logout.php" class="nav-link logout">
-            🚪 Logout
+             Logout
         </a>
 
     </nav>

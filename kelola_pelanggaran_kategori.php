@@ -1,29 +1,35 @@
 
 <?php
-session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once "database.php";
+require_once "auth.php";
 
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
-}
-
-if (($_SESSION['role'] ?? '') !== 'admin') {
-    die("Akses ditolak.");
-}
+hanyaRole(['admin']);
 
 $error = "";
+$tampil_form = isset($_GET['tambah']) && $_GET['tambah'] == '1';
 
 /* =========================
    TAMBAH KATEGORI
 ========================= */
 
 if (isset($_POST['simpan'])) {
+
+    $tampil_form = true;
     $nama = trim($_POST['nama'] ?? '');
 
     if ($nama === '') {
+
         $error = "Nama kategori wajib diisi.";
+
     } else {
+
         $cek = mysqli_prepare(
             $koneksi,
             "SELECT id FROM kategori WHERE nama = ? LIMIT 1"
@@ -34,8 +40,11 @@ if (isset($_POST['simpan'])) {
         $hasil_cek = mysqli_stmt_get_result($cek);
 
         if (mysqli_num_rows($hasil_cek) > 0) {
+
             $error = "Kategori tersebut sudah ada.";
+
         } else {
+
             $stmt = mysqli_prepare(
                 $koneksi,
                 "INSERT INTO kategori (nama) VALUES (?)"
@@ -44,12 +53,21 @@ if (isset($_POST['simpan'])) {
             mysqli_stmt_bind_param($stmt, "s", $nama);
 
             if (mysqli_stmt_execute($stmt)) {
+
+                mysqli_stmt_close($stmt);
+
                 header("Location: kelola_pelanggaran_kategori.php");
                 exit;
+
             } else {
+
                 $error = "Gagal menambahkan kategori: " . mysqli_error($koneksi);
+
+                mysqli_stmt_close($stmt);
             }
         }
+
+        mysqli_stmt_close($cek);
     }
 }
 
@@ -58,9 +76,11 @@ if (isset($_POST['simpan'])) {
 ========================= */
 
 if (isset($_GET['hapus'])) {
+
     $id = (int)$_GET['hapus'];
 
     if ($id > 0) {
+
         $stmt = mysqli_prepare(
             $koneksi,
             "DELETE FROM kategori WHERE id = ?"
@@ -69,11 +89,18 @@ if (isset($_GET['hapus'])) {
         mysqli_stmt_bind_param($stmt, "i", $id);
 
         if (!mysqli_stmt_execute($stmt)) {
+
             $error = "Kategori tidak dapat dihapus. Pastikan kategori tidak sedang digunakan oleh jenis pelanggaran.";
+
         } else {
+
+            mysqli_stmt_close($stmt);
+
             header("Location: kelola_pelanggaran_kategori.php");
             exit;
         }
+
+        mysqli_stmt_close($stmt);
     }
 }
 
@@ -98,11 +125,14 @@ $total_data = (int)mysqli_fetch_assoc(
     mysqli_stmt_get_result($stmt_total)
 )['total'];
 
+mysqli_stmt_close($stmt_total);
+
 /* =========================
    PAGINATION
 ========================= */
 
-$batas = 5;
+$batas = 10;
+
 $total_halaman = max(1, (int)ceil($total_data / $batas));
 
 $halaman = max(1, (int)($_GET['halaman'] ?? 1));
@@ -137,312 +167,479 @@ $data = mysqli_stmt_get_result($stmt_data);
 
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Kategori Pelanggaran</title>
+<title>Kategori Pelanggaran</title>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <style>
-        body {
-            margin: 0;
-            background: #f4f6f8;
-            font-family: Arial, sans-serif;
-            color: #333;
-        }
+<style>
 
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 220px;
-            height: 100vh;
-            padding: 20px 12px;
-            background: #687280;
-            overflow-y: auto;
-        }
+* {
+    box-sizing: border-box;
+}
 
-        .sidebar-title {
-            color: white;
-            font-size: 19px;
-            font-weight: bold;
-            margin: 0 8px 25px;
-            line-height: 1.4;
-        }
+body {
+    margin: 0;
+    background: #f4f6f8;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    color: #212529;
+}
 
-        .sidebar a {
-            display: block;
-            padding: 11px 13px;
-            margin-bottom: 5px;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 14px;
-        }
+/* SIDEBAR */
 
-        .sidebar a:hover,
-        .sidebar a.active {
-            background: #4f5965;
-        }
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 220px;
+    height: 100vh;
+    background: #687280;
+    padding: 20px 12px;
+    overflow-y: auto;
+}
 
-        .sidebar .logout {
-            margin-top: 20px;
-            background: #b42323;
-        }
+.sidebar-title {
+    color: white;
+    font-size: 19px;
+    font-weight: bold;
+    margin: 0 8px 25px;
+    line-height: 1.4;
+}
 
-        .content {
-            margin-left: 220px;
-            padding: 30px;
-        }
+.sidebar a {
+    display: block;
+    padding: 11px 13px;
+    margin-bottom: 5px;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    font-size: 14px;
+}
 
-        .header,
-        .box {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 7px;
-            padding: 22px;
-            margin-bottom: 20px;
-        }
+.sidebar a:hover,
+.sidebar a.active {
+    background: #4f5965;
+}
 
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+.sidebar .logout {
+    margin-top: 20px;
+    background: #b42323;
+}
 
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-        }
+.sidebar .logout:hover {
+    background: #941d1d;
+}
 
-        .header p {
-            color: #777;
-            margin: 5px 0 0;
-        }
+/* CONTENT */
 
-        .btn-tambah {
-            background: #9dff00;
-            border: 1px solid #9dff00;
-            color: #222;
-            font-weight: bold;
-        }
+.content {
+    margin-left: 220px;
+    padding: 30px;
+}
 
-        .btn-tambah:hover {
-            background: #8be000;
-            border-color: #8be000;
-            color: #222;
-        }
+/* PANEL */
 
-        .btn-hapus {
-            background: #b42323;
-            color: white;
-        }
+.card {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: none;
+}
 
-        .btn-hapus:hover {
-            background: #941d1d;
-            color: white;
-        }
+.card-body {
+    padding: 20px;
+}
 
-        .table thead th {
-            background: #687280;
-            color: white;
-            white-space: nowrap;
-        }
+/* BUTTON */
 
-        .table td {
-            vertical-align: middle;
-        }
+.btn-stabilo {
+    background: #9dff00;
+    color: #1a3300;
+    font-weight: bold;
+    border: none;
+}
 
-        .pagination .page-link {
-            color: #333;
-        }
+.btn-stabilo:hover {
+    background: #86e000;
+    color: #1a3300;
+}
 
-        .pagination .active .page-link {
-            background: #687280;
-            border-color: #687280;
-            color: white;
-        }
+/* TABLE */
 
-        @media(max-width: 700px) {
-            .sidebar {
-                position: relative;
-                width: 100%;
-                height: auto;
-            }
+.table {
+    font-size: 12px;
+    margin-bottom: 10px;
+}
 
-            .content {
-                margin-left: 0;
-                padding: 15px;
-            }
+.table th,
+.table td {
+    padding: 10px;
+    vertical-align: middle;
+}
 
-            .header {
-                display: block;
-            }
+/* PAGINATION */
 
-            .header .btn {
-                margin-top: 15px;
-            }
-        }
-    </style>
+.page-link {
+    color: #687280;
+}
+
+.page-item.active .page-link {
+    background: #687280;
+    border-color: #687280;
+    color: white;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 700px) {
+
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+    }
+
+    .content {
+        margin-left: 0;
+        padding: 15px;
+    }
+}
+
+</style>
 </head>
 
 <body>
 
+<!-- SIDEBAR -->
+
 <div class="sidebar">
+
     <div class="sidebar-title">⚖ Pelanggaran<br>Siswa</div>
 
-    <a href="dashboard.php"> Dashboard</a>
+    <a href="dashboard.php">Dashboard</a>
+
     <a href="kelola_siswa.php">Data Siswa</a>
+
     <a href="kelola_guru.php">Data Guru</a>
+
     <a href="kelola_kelas.php">Data Kelas</a>
+
     <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
+
     <a href="kelola_wali_kelas.php">Wali Kelas</a>
+
     <a href="penempatan_siswa.php">Penempatan Siswa</a>
-    <a href="kelola_pelanggaran_kategori.php" class="active"> Kategori Pelanggaran</a>
+
+    <a href="kelola_pelanggaran_kategori.php" class="active">Kategori Pelanggaran</a>
+
     <a href="pelanggaran.php">Data Pelanggaran</a>
+
     <a href="tindakan.php">Data Tindakan</a>
+
     <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">ℹ About Me</a>
-    <a href="logout.php" class="logout"> Logout</a>
+
+    <a href="about_me.php">About Me</a>
+
+    <a href="logout.php" class="logout">Logout</a>
+
 </div>
+
+<!-- CONTENT -->
 
 <div class="content">
 
-    <div class="header">
-        <div>
-            <h1>Kategori Pelanggaran</h1>
-            <p>Kelola kategori pelanggaran siswa.</p>
+    <!-- HEADER -->
+
+    <div class="card mb-3">
+
+        <div class="card-body">
+
+            <h4 class="mb-1">Kategori Pelanggaran</h4>
+
+            <p class="text-muted mb-0">
+                Kelola kategori pelanggaran siswa.
+            </p>
+
         </div>
 
-        <a href="kelola_pelanggaran_kategori.php?tambah=1"
-           class="btn btn-tambah">
-            + Tambah Kategori
-        </a>
     </div>
 
-    <?php if ($error !== ''): ?>
+    <!-- PESAN ERROR -->
+
+    <?php if ($error !== '') { ?>
+
         <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
         </div>
-    <?php endif; ?>
 
-    <?php if (isset($_GET['tambah']) && $_GET['tambah'] == '1'): ?>
-        <div class="box">
-            <h5 class="mb-3">Tambah Kategori Pelanggaran</h5>
+    <?php } ?>
 
-            <form method="POST">
-                <div class="mb-3">
-                    <label class="form-label">Nama Kategori</label>
+    <!-- FORM TAMBAH -->
+
+    <?php if ($tampil_form) { ?>
+
+        <div class="card mb-3">
+
+            <div class="card-body">
+
+                <h5 class="mb-3">Tambah Kategori Pelanggaran</h5>
+
+                <form method="POST">
+
+                    <div class="mb-3">
+
+                        <label class="form-label fw-bold">
+                            Nama Kategori
+                        </label>
+
+                        <input
+                            type="text"
+                            name="nama"
+                            class="form-control"
+                            placeholder="Contoh: Kedisiplinan"
+                            value="<?= htmlspecialchars($_POST['nama'] ?? ''); ?>"
+                            required
+                        >
+
+                    </div>
+
+                    <button
+                        type="submit"
+                        name="simpan"
+                        class="btn btn-stabilo btn-sm"
+                    >
+                        Simpan
+                    </button>
+
+                    <a
+                        href="kelola_pelanggaran_kategori.php"
+                        class="btn btn-outline-secondary btn-sm"
+                    >
+                        Batal
+                    </a>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    <?php } ?>
+
+    <!-- DAFTAR KATEGORI -->
+
+    <div class="card">
+
+        <div class="card-body">
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+
+                <h5 class="mb-0">Daftar Kategori Pelanggaran</h5>
+
+                <?php if (!$tampil_form) { ?>
+
+                    <a
+                        href="kelola_pelanggaran_kategori.php?tambah=1"
+                        class="btn btn-sm btn-stabilo"
+                    >
+                        + Tambah Kategori
+                    </a>
+
+                <?php } ?>
+
+            </div>
+
+            <!-- PENCARIAN -->
+
+            <form method="GET" class="row g-2 mb-3">
+
+                <div class="col-md-5">
+
                     <input
                         type="text"
-                        name="nama"
-                        class="form-control"
-                        placeholder="Contoh: Kedisiplinan"
-                        required
+                        name="cari"
+                        class="form-control form-control-sm"
+                        placeholder="Cari nama kategori..."
+                        value="<?= htmlspecialchars($cari); ?>"
                     >
+
                 </div>
 
-                <button type="submit" name="simpan" class="btn btn-tambah">
-                    Simpan Kategori
-                </button>
+                <div class="col-auto">
 
-                <a href="kelola_pelanggaran_kategori.php" class="btn btn-secondary">
-                    Batal
-                </a>
+                    <button type="submit" class="btn btn-secondary btn-sm">
+                        Cari
+                    </button>
+
+                    <?php if ($cari !== '') { ?>
+
+                        <a
+                            href="kelola_pelanggaran_kategori.php"
+                            class="btn btn-outline-secondary btn-sm"
+                        >
+                            Reset
+                        </a>
+
+                    <?php } ?>
+
+                </div>
+
             </form>
-        </div>
-    <?php endif; ?>
 
-    <div class="box">
-        <h5 class="mb-3">Daftar Kategori Pelanggaran</h5>
+            <!-- TABEL -->
 
-        <form method="GET" class="row g-2 mb-3">
-            <div class="col-md-5">
-                <input
-                    type="text"
-                    name="cari"
-                    class="form-control"
-                    placeholder="Cari nama kategori..."
-                    value="<?= htmlspecialchars($cari); ?>"
-                >
-            </div>
+            <div class="table-responsive">
 
-            <div class="col-auto">
-                <button type="submit" class="btn btn-secondary">Cari</button>
-                <a href="kelola_pelanggaran_kategori.php" class="btn btn-outline-secondary">
-                    Reset
-                </a>
-            </div>
-        </form>
+                <table class="table table-bordered table-hover align-middle">
 
-        <div class="table-responsive">
-            <table class="table table-bordered table-hover">
-                <thead>
-                    <tr>
-                        <th>No</th>
-                        <th>Nama Kategori</th>
-                        <th>Aksi</th>
-                    </tr>
-                </thead>
+                    <thead class="table-secondary">
 
-                <tbody>
-                    <?php if ($data && mysqli_num_rows($data) > 0): ?>
+                        <tr>
+                            <th width="55">No</th>
+                            <th>Nama Kategori</th>
+                            <th width="150">Aksi</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody>
+
+                    <?php if ($data && mysqli_num_rows($data) > 0) { ?>
+
                         <?php $no = $offset + 1; ?>
 
-                        <?php while ($row = mysqli_fetch_assoc($data)): ?>
+                        <?php while ($row = mysqli_fetch_assoc($data)) { ?>
+
                             <tr>
+
                                 <td><?= $no++; ?></td>
 
                                 <td>
-                                    <b><?= htmlspecialchars($row['nama']); ?></b>
+                                    <strong>
+                                        <?= htmlspecialchars($row['nama']); ?>
+                                    </strong>
                                 </td>
 
                                 <td class="text-nowrap">
-                                    <a
-                                        href="edit_kategori.php?id=<?= $row['id']; ?>"
-                                        class="btn btn-sm btn-tambah"
-                                    >Edit</a>
 
                                     <a
-                                        href="kelola_pelanggaran_kategori.php?hapus=<?= $row['id']; ?>"
-                                        class="btn btn-sm btn-hapus"
+                                        href="edit_kategori.php?id=<?= (int)$row['id']; ?>"
+                                        class="btn btn-sm btn-stabilo"
+                                    >
+                                        Edit
+                                    </a>
+
+                                    <a
+                                        href="kelola_pelanggaran_kategori.php?hapus=<?= (int)$row['id']; ?>"
+                                        class="btn btn-sm btn-danger"
                                         onclick="return confirm('Yakin ingin menghapus kategori ini?')"
-                                    >Hapus</a>
-                                </td>
-                            </tr>
-                        <?php endwhile; ?>
+                                    >
+                                        Hapus
+                                    </a>
 
-                    <?php else: ?>
+                                </td>
+
+                            </tr>
+
+                        <?php } ?>
+
+                    <?php } else { ?>
+
                         <tr>
+
                             <td colspan="3" class="text-center py-4">
                                 Belum ada kategori pelanggaran.
                             </td>
+
                         </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+
+                    <?php } ?>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            <!-- INFORMASI DATA -->
+
+            <div class="text-muted small">
+
+                Menampilkan
+                <?= $total_data > 0 ? $offset + 1 : 0; ?>
+                -
+                <?= min($offset + $batas, $total_data); ?>
+                dari
+                <?= $total_data; ?>
+                data kategori.
+
+            </div>
+
+            <!-- PAGINATION -->
+
+            <?php if ($total_halaman > 1) { ?>
+
+                <nav class="mt-3">
+
+                    <ul class="pagination pagination-sm mb-0">
+
+                        <?php if ($halaman > 1) { ?>
+
+                            <li class="page-item">
+
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    &laquo;
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+                        <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+
+                            <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
+
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    <?= $i; ?>
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+                        <?php if ($halaman < $total_halaman) { ?>
+
+                            <li class="page-item">
+
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    &raquo;
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+                    </ul>
+
+                </nav>
+
+            <?php } ?>
+
         </div>
 
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <small class="text-muted">
-                Total <?= $total_data; ?> kategori
-            </small>
-
-            <nav>
-                <ul class="pagination pagination-sm mb-0">
-                    <?php for ($i = 1; $i <= $total_halaman; $i++): ?>
-                        <li class="page-item <?= ($halaman == $i) ? 'active' : ''; ?>">
-                            <a
-                                class="page-link"
-                                href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>"
-                            ><?= $i; ?></a>
-                        </li>
-                    <?php endfor; ?>
-                </ul>
-            </nav>
-        </div>
     </div>
 
 </div>
