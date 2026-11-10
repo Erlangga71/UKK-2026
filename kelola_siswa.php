@@ -412,8 +412,6 @@ body {
 
     <a href="pelanggaran.php">Data Pelanggaran</a>
 
-    <a href="tindakan.php">Data Tindakan</a>
-
     <a href="laporan.php">Laporan</a>
 
     <a href="about_me.php">About Me</a>

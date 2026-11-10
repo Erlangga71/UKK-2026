@@ -10,11 +10,26 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-hanyaRole(['admin', 'guru']);
+hanyaRole(['admin', 'guru', 'wali_kelas']);
 
 $role = $_SESSION['role'] ?? '';
 $nama = $_SESSION['nama'] ?? 'Pengguna';
 $email = $_SESSION['email'] ?? '';
+
+function bindParams($stmt, $types, &$params) {
+    if (empty($params)) {
+        return;
+    }
+
+    $refs = [];
+    $refs[] = &$types;
+
+    foreach ($params as $key => &$value) {
+        $refs[] = &$value;
+    }
+
+    call_user_func_array([$stmt, 'bind_param'], $refs);
+}
 
 /* =========================
    CSRF TOKEN
@@ -29,40 +44,153 @@ $jenis_pesan = "";
 $tampil_form = isset($_GET['tambah']) || isset($_POST['simpan']);
 
 /* =========================
-   CARI ID GURU YANG LOGIN
+   DATA GURU LOGIN
 ========================= */
 
 $guru_login_id = null;
+$kelas_wali_id = null;
+$tahun_aktif_id = null;
+$nama_tahun_aktif = '';
+$data_kelas = null;
 
-if ($role === 'guru') {
+if ($role !== 'admin') {
 
     if ($email === '') {
-        die("Email akun guru tidak ditemukan dalam sesi.");
+        die("Email akun tidak ditemukan dalam sesi login.");
     }
 
-    $stmt_guru = $koneksi->prepare(
-        "SELECT id FROM guru WHERE email = ? LIMIT 1"
+    $stmt = $koneksi->prepare(
+        "SELECT guru_id FROM users WHERE email = ? LIMIT 1"
     );
 
-    if (!$stmt_guru) {
-        die("Query guru gagal: " . $koneksi->error);
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+
+    $akun = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!empty($akun['guru_id'])) {
+        $guru_login_id = (int)$akun['guru_id'];
+    } else {
+
+        $stmt = $koneksi->prepare(
+            "SELECT id FROM guru WHERE email = ? LIMIT 1"
+        );
+
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+
+        $data_guru = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if ($data_guru) {
+            $guru_login_id = (int)$data_guru['id'];
+        }
     }
 
-    $stmt_guru->bind_param("s", $email);
-    $stmt_guru->execute();
+    if (!$guru_login_id) {
+        die("Akun ini belum terhubung dengan data guru.");
+    }
+}
 
-    $hasil_guru = $stmt_guru->get_result();
+/* =========================
+   TAHUN AJARAN AKTIF
+========================= */
 
-    if ($hasil_guru->num_rows > 0) {
-        $data_guru = $hasil_guru->fetch_assoc();
-        $guru_login_id = (int)$data_guru['id'];
+$stmt_tahun = $koneksi->prepare(
+    "SELECT id, nama
+     FROM tahun_ajaran
+     WHERE aktif = 1
+     ORDER BY id DESC
+     LIMIT 1"
+);
+
+$stmt_tahun->execute();
+$data_tahun = $stmt_tahun->get_result()->fetch_assoc();
+$stmt_tahun->close();
+
+if ($data_tahun) {
+    $tahun_aktif_id = (int)$data_tahun['id'];
+    $nama_tahun_aktif = $data_tahun['nama'];
+}
+
+/* =========================
+   KELAS WALI KELAS
+========================= */
+
+if ($role === 'wali_kelas') {
+
+    if (!$tahun_aktif_id) {
+        die("Belum ada tahun ajaran aktif.");
     }
 
-    $stmt_guru->close();
+    $stmt_kelas = $koneksi->prepare(
+        "SELECT w.kelas_id, k.nama_kelas
+         FROM wali_kelas w
+         JOIN kelas k ON w.kelas_id = k.id
+         WHERE w.guru_id = ?
+           AND w.tahun_ajaran_id = ?
+         LIMIT 1"
+    );
 
-    if ($guru_login_id === null) {
-        die("Data guru dengan email akun ini belum terdaftar di tabel guru.");
+    $stmt_kelas->bind_param(
+        "ii",
+        $guru_login_id,
+        $tahun_aktif_id
+    );
+
+    $stmt_kelas->execute();
+    $data_kelas = $stmt_kelas->get_result()->fetch_assoc();
+    $stmt_kelas->close();
+
+    if (!$data_kelas) {
+        die("Akun Wali Kelas belum memiliki penempatan pada tahun ajaran aktif.");
     }
+
+    $kelas_wali_id = (int)$data_kelas['kelas_id'];
+}
+
+/* =========================
+   CEK AKSES SISWA
+========================= */
+
+function siswaBolehDiakses(
+    $koneksi,
+    $role,
+    $siswa_id,
+    $kelas_wali_id,
+    $tahun_aktif_id
+) {
+    if ($role === 'admin') {
+        return true;
+    }
+
+    if ($role === 'wali_kelas') {
+
+        $stmt = $koneksi->prepare(
+            "SELECT id
+             FROM penempatan_siswa
+             WHERE siswa_id = ?
+               AND kelas_id = ?
+               AND tahun_ajaran_id = ?
+             LIMIT 1"
+        );
+
+        $stmt->bind_param(
+            "iii",
+            $siswa_id,
+            $kelas_wali_id,
+            $tahun_aktif_id
+        );
+
+        $stmt->execute();
+        $hasil = $stmt->get_result()->num_rows > 0;
+        $stmt->close();
+
+        return $hasil;
+    }
+
+    return true;
 }
 
 /* =========================
@@ -94,11 +222,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
 
         $guru_id = null;
 
-        if ($role === 'guru') {
-            $guru_id = $guru_login_id;
-        } else {
+        if ($role === 'admin') {
             $pilihan_guru = (int)($_POST['guru_id'] ?? 0);
             $guru_id = $pilihan_guru > 0 ? $pilihan_guru : null;
+        } else {
+            $guru_id = $guru_login_id;
         }
 
         $tanggal_obj = DateTime::createFromFormat('!Y-m-d', $tanggal);
@@ -121,34 +249,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
             $pesan = "Status pelanggaran tidak valid.";
             $jenis_pesan = "danger";
 
+        } elseif (
+            !siswaBolehDiakses(
+                $koneksi,
+                $role,
+                $siswa_id,
+                $kelas_wali_id,
+                $tahun_aktif_id
+            )
+        ) {
+
+            $pesan = "Kamu tidak memiliki akses untuk mencatat siswa tersebut.";
+            $jenis_pesan = "danger";
+
         } else {
 
-            /* CEK SISWA */
             $stmt = $koneksi->prepare(
-                "SELECT id FROM siswa WHERE id = ? AND aktif = 1"
+                "SELECT id FROM siswa
+                 WHERE id = ? AND aktif = 1"
             );
 
             $stmt->bind_param("i", $siswa_id);
             $stmt->execute();
-
             $cek_siswa = $stmt->get_result();
             $stmt->close();
 
-            /* CEK JENIS PELANGGARAN */
             $stmt = $koneksi->prepare(
                 "SELECT id FROM jenis_pelanggaran WHERE id = ?"
             );
 
             $stmt->bind_param("i", $jenis_id);
             $stmt->execute();
-
             $cek_jenis = $stmt->get_result();
             $stmt->close();
 
-            /* CEK GURU PILIHAN ADMIN */
             $cek_guru_valid = true;
 
-            if ($role === 'admin' && $guru_id !== null) {
+            if ($guru_id !== null) {
 
                 $stmt = $koneksi->prepare(
                     "SELECT id FROM guru WHERE id = ?"
@@ -157,8 +294,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
                 $stmt->bind_param("i", $guru_id);
                 $stmt->execute();
 
-                $hasil_cek_guru = $stmt->get_result();
-                $cek_guru_valid = ($hasil_cek_guru->num_rows > 0);
+                $cek_guru_valid = (
+                    $stmt->get_result()->num_rows > 0
+                );
 
                 $stmt->close();
             }
@@ -180,7 +318,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
 
             } else {
 
-                /* SIMPAN DATA */
                 $stmt = $koneksi->prepare(
                     "INSERT INTO pelanggaran
                     (siswa_id, jenis_id, guru_id, tanggal, keterangan, status)
@@ -240,13 +377,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hapus'])) {
 
         if ($id_hapus > 0) {
 
-            $stmt = $koneksi->prepare(
-                "DELETE FROM pelanggaran WHERE id = ?"
-            );
+            $sql_hapus = "DELETE p FROM pelanggaran p
+                          WHERE p.id = ?";
 
-            $stmt->bind_param("i", $id_hapus);
+            $types_hapus = "i";
+            $params_hapus = [$id_hapus];
 
-            if ($stmt->execute()) {
+            if ($role === 'guru') {
+                $sql_hapus .= " AND p.guru_id = ?";
+                $types_hapus .= "i";
+                $params_hapus[] = $guru_login_id;
+            }
+
+            if ($role === 'wali_kelas') {
+                $sql_hapus .= "
+                    AND EXISTS (
+                        SELECT 1
+                        FROM penempatan_siswa ps
+                        WHERE ps.siswa_id = p.siswa_id
+                          AND ps.kelas_id = ?
+                          AND ps.tahun_ajaran_id = ?
+                    )";
+
+                $types_hapus .= "ii";
+                $params_hapus[] = $kelas_wali_id;
+                $params_hapus[] = $tahun_aktif_id;
+            }
+
+            $stmt = $koneksi->prepare($sql_hapus);
+            bindParams($stmt, $types_hapus, $params_hapus);
+
+            if ($stmt->execute() && $stmt->affected_rows > 0) {
 
                 $stmt->close();
 
@@ -257,7 +418,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hapus'])) {
 
             } else {
 
-                $pesan = "Gagal menghapus data. Pastikan data pelanggaran tidak sedang digunakan oleh data tindakan.";
+                $pesan = "Data tidak ditemukan, tidak memiliki akses, atau sedang digunakan oleh data tindakan.";
                 $jenis_pesan = "danger";
                 $stmt->close();
             }
@@ -285,20 +446,43 @@ if (isset($_GET['dihapus'])) {
 }
 
 /* =========================
-   DATA DROPDOWN
+   DROPDOWN SISWA
 ========================= */
 
-$query_siswa = mysqli_query(
-    $koneksi,
-    "SELECT id, nis, nama
-     FROM siswa
-     WHERE aktif = 1
-     ORDER BY nama ASC"
-);
+if ($role === 'wali_kelas') {
+
+    $stmt = $koneksi->prepare(
+        "SELECT s.id, s.nis, s.nama
+         FROM siswa s
+         JOIN penempatan_siswa ps ON ps.siswa_id = s.id
+         WHERE s.aktif = 1
+           AND ps.kelas_id = ?
+           AND ps.tahun_ajaran_id = ?
+         ORDER BY s.nama ASC"
+    );
+
+    $stmt->bind_param("ii", $kelas_wali_id, $tahun_aktif_id);
+    $stmt->execute();
+    $query_siswa = $stmt->get_result();
+
+} else {
+
+    $query_siswa = mysqli_query(
+        $koneksi,
+        "SELECT id, nis, nama
+         FROM siswa
+         WHERE aktif = 1
+         ORDER BY nama ASC"
+    );
+}
 
 if (!$query_siswa) {
     die("Gagal mengambil data siswa: " . $koneksi->error);
 }
+
+/* =========================
+   DROPDOWN JENIS PELANGGARAN
+========================= */
 
 $query_jenis = mysqli_query(
     $koneksi,
@@ -316,19 +500,28 @@ if (!$query_jenis) {
     die("Gagal mengambil jenis pelanggaran: " . $koneksi->error);
 }
 
-$query_guru = mysqli_query(
-    $koneksi,
-    "SELECT id, nama
-     FROM guru
-     ORDER BY nama ASC"
-);
+/* =========================
+   DROPDOWN GURU ADMIN
+========================= */
 
-if (!$query_guru) {
-    die("Gagal mengambil data guru: " . $koneksi->error);
+$query_guru = null;
+
+if ($role === 'admin') {
+
+    $query_guru = mysqli_query(
+        $koneksi,
+        "SELECT id, nama
+         FROM guru
+         ORDER BY nama ASC"
+    );
+
+    if (!$query_guru) {
+        die("Gagal mengambil data guru: " . $koneksi->error);
+    }
 }
 
 /* =========================
-   PENCARIAN
+   FILTER DATA
 ========================= */
 
 $cari = trim($_GET['cari'] ?? '');
@@ -340,12 +533,46 @@ $sql_filter = "
     LEFT JOIN jenis_pelanggaran j ON p.jenis_id = j.id
     LEFT JOIN kategori k ON j.kategori_id = k.id
     LEFT JOIN guru g ON p.guru_id = g.id
-    WHERE s.nis LIKE ?
-       OR s.nama LIKE ?
-       OR j.nama LIKE ?
-       OR k.nama LIKE ?
-       OR g.nama LIKE ?
+    WHERE (
+        s.nis LIKE ?
+        OR s.nama LIKE ?
+        OR j.nama LIKE ?
+        OR k.nama LIKE ?
+        OR g.nama LIKE ?
+    )
 ";
+
+$params = [
+    $cari_sql,
+    $cari_sql,
+    $cari_sql,
+    $cari_sql,
+    $cari_sql
+];
+
+$types = "sssss";
+
+if ($role === 'guru') {
+
+    $sql_filter .= " AND p.guru_id = ?";
+    $params[] = $guru_login_id;
+    $types .= "i";
+
+} elseif ($role === 'wali_kelas') {
+
+    $sql_filter .= "
+        AND EXISTS (
+            SELECT 1
+            FROM penempatan_siswa ps
+            WHERE ps.siswa_id = p.siswa_id
+              AND ps.kelas_id = ?
+              AND ps.tahun_ajaran_id = ?
+        )";
+
+    $params[] = $kelas_wali_id;
+    $params[] = $tahun_aktif_id;
+    $types .= "ii";
+}
 
 /* =========================
    HITUNG DATA
@@ -355,43 +582,37 @@ $stmt_total = $koneksi->prepare(
     "SELECT COUNT(*) AS total " . $sql_filter
 );
 
-$stmt_total->bind_param(
-    "sssss",
-    $cari_sql,
-    $cari_sql,
-    $cari_sql,
-    $cari_sql,
-    $cari_sql
-);
-
+bindParams($stmt_total, $types, $params);
 $stmt_total->execute();
 
 $total_data = (int)$stmt_total->get_result()->fetch_assoc()['total'];
-
 $stmt_total->close();
 
 /* =========================
    PAGINATION
 ========================= */
 
-$batas = 10;
+$per_halaman = 10;
 
 $total_halaman = max(
     1,
-    (int)ceil($total_data / $batas)
+    (int)ceil($total_data / $per_halaman)
 );
 
 $halaman = max(1, (int)($_GET['halaman'] ?? 1));
-$halaman = min($halaman, $total_halaman);
 
-$offset = ($halaman - 1) * $batas;
+if ($halaman > $total_halaman) {
+    $halaman = $total_halaman;
+}
+
+$mulai = ($halaman - 1) * $per_halaman;
 
 /* =========================
-   DATA PELANGGARAN
+   AMBIL DATA PELANGGARAN
 ========================= */
 
-$stmt_data = $koneksi->prepare(
-    "SELECT
+$sql_data = "
+    SELECT
         p.id,
         s.nis,
         s.nama AS nama_siswa,
@@ -402,194 +623,218 @@ $stmt_data = $koneksi->prepare(
         p.tanggal,
         p.keterangan,
         p.status
-     " . $sql_filter . "
-     ORDER BY p.id DESC
-     LIMIT ? OFFSET ?"
-);
+    " . $sql_filter . "
+    ORDER BY p.id DESC
+    LIMIT ? OFFSET ?
+";
 
-$stmt_data->bind_param(
-    "sssssii",
-    $cari_sql,
-    $cari_sql,
-    $cari_sql,
-    $cari_sql,
-    $cari_sql,
-    $batas,
-    $offset
-);
+$params_data = $params;
+$params_data[] = $per_halaman;
+$params_data[] = $mulai;
+$types_data = $types . "ii";
 
+$stmt_data = $koneksi->prepare($sql_data);
+bindParams($stmt_data, $types_data, $params_data);
 $stmt_data->execute();
 
 $query_pelanggaran = $stmt_data->get_result();
+
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Data Pelanggaran</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<title>Data Pelanggaran</title>
 
-    <style>
-        body {
-            margin: 0;
-            background: #f4f6f8;
-            font-family: Arial, sans-serif;
-            color: #212529;
-            font-size: 14px;
-        }
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
-        /* SIDEBAR */
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 220px;
-            height: 100vh;
-            background: #687280;
-            padding: 20px 12px;
-            overflow-y: auto;
-        }
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
 
-        .sidebar a {
-            display: block;
-            color: white;
-            font-size: 14px;
-            padding: 11px 13px;
-            margin-bottom: 5px;
-            border-radius: 5px;
-            text-decoration: none;
-        }
+<style>
 
-        .sidebar a:hover,
-        .sidebar a.active {
-            background: #4f5965;
-            color: white;
-        }
+body {
+    margin: 0;
+    background: #f4f6f8;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    color: #212529;
+}
 
-        .sidebar .logout {
-            background: #b42323;
-            margin-top: 20px;
-        }
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 220px;
+    height: 100vh;
+    background: #687280;
+    padding: 20px 12px;
+    overflow-y: auto;
+}
 
-        .sidebar .logout:hover {
-            background: #941d1d;
-        }
+.sidebar-title {
+    color: white;
+    font-size: 19px;
+    font-weight: bold;
+    margin: 0 8px 25px;
+    line-height: 1.4;
+}
 
-        /* KONTEN */
-        .content {
-            margin-left: 220px;
-            padding: 30px;
-        }
+.sidebar a {
+    display: block;
+    padding: 11px 13px;
+    margin-bottom: 5px;
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    font-size: 14px;
+}
 
-        .card {
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            box-shadow: none;
-        }
+.sidebar a:hover,
+.sidebar a.active {
+    background: #4f5965;
+}
 
-        .card-body {
-            padding: 20px;
-        }
+.sidebar .logout {
+    margin-top: 20px;
+    background: #b42323;
+}
 
-        .btn-stabilo {
-            background: #9dff00;
-            color: #1a3300;
-            font-weight: bold;
-            border: none;
-        }
+.sidebar .logout:hover {
+    background: #941d1d;
+}
 
-        .btn-stabilo:hover {
-            background: #86e000;
-            color: #1a3300;
-        }
+.content {
+    margin-left: 220px;
+    padding: 30px;
+}
 
-        .table {
-            font-size: 12px;
-            margin-bottom: 10px;
-        }
+.card {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: none;
+}
 
-        .table th,
-        .table td {
-            padding: 10px;
-            vertical-align: middle;
-        }
+.card-body {
+    padding: 20px;
+}
 
-        .table th {
-            white-space: nowrap;
-        }
+.btn-stabilo {
+    background: #9dff00;
+    color: #1a3300;
+    font-weight: bold;
+    border: none;
+}
 
-        .form-label {
-            font-size: 14px;
-            font-weight: 600;
-        }
+.btn-stabilo:hover {
+    background: #86e000;
+    color: #1a3300;
+}
 
-        .form-control,
-        .form-select {
-            font-size: 14px;
-        }
+.table {
+    font-size: 12px;
+    margin-bottom: 10px;
+}
 
-        .status {
-            display: inline-block;
-            padding: 5px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: bold;
-            white-space: nowrap;
-        }
+.table th,
+.table td {
+    padding: 10px;
+    vertical-align: middle;
+}
 
-        .tercatat {
-            background: #fff3cd;
-            color: #856404;
-        }
+.status {
+    display: inline-block;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    white-space: nowrap;
+}
 
-        .ditindaklanjuti {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
+.tercatat {
+    background: #fff3cd;
+    color: #856404;
+}
 
-        .selesai {
-            background: #d4edda;
-            color: #155724;
-        }
+.ditindaklanjuti {
+    background: #d1ecf1;
+    color: #0c5460;
+}
 
-        .page-link {
-            color: #687280;
-        }
+.selesai {
+    background: #d4edda;
+    color: #155724;
+}
 
-        .page-item.active .page-link {
-            background: #687280;
-            border-color: #687280;
-            color: white;
-        }
+.ts-control {
+    min-height: 38px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    font-size: 14px;
+    padding: 8px 12px;
+}
 
-        @media (max-width: 700px) {
-            .sidebar {
-                position: relative;
-                width: 100%;
-                height: auto;
-            }
+.ts-control input {
+    font-size: 14px;
+}
 
-            .content {
-                margin-left: 0;
-                padding: 15px;
-            }
-        }
-    </style>
+.ts-dropdown {
+    font-size: 13px;
+}
+
+.ts-dropdown .option {
+    padding: 9px 12px;
+}
+
+.ts-dropdown .active {
+    background: #687280;
+    color: white;
+}
+
+.page-link {
+    color: #687280;
+}
+
+.page-item.active .page-link {
+    background: #687280;
+    border-color: #687280;
+    color: white;
+}
+
+@media (max-width: 700px) {
+
+    .sidebar {
+        position: relative;
+        width: 100%;
+        height: auto;
+    }
+
+    .content {
+        margin-left: 0;
+        padding: 15px;
+    }
+
+}
+
+</style>
+
 </head>
 
 <body>
 
-<!-- SIDEBAR -->
 <div class="sidebar">
+
+    <div class="sidebar-title">
+        Pelanggaran<br>Siswa
+    </div>
 
     <a href="dashboard.php">Dashboard</a>
 
-    <?php if ($role === 'admin'): ?>
+    <?php if ($role === 'admin') { ?>
 
         <a href="kelola_siswa.php">Data Siswa</a>
         <a href="kelola_guru.php">Data Guru</a>
@@ -599,47 +844,68 @@ $query_pelanggaran = $stmt_data->get_result();
         <a href="penempatan_siswa.php">Penempatan Siswa</a>
         <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
         <a href="pelanggaran.php" class="active">Data Pelanggaran</a>
-        <a href="tindakan.php">Data Tindakan</a>
         <a href="laporan.php">Laporan</a>
         <a href="about_me.php">About Me</a>
 
-    <?php elseif ($role === 'guru'): ?>
+    <?php } elseif ($role === 'guru') { ?>
 
         <a href="catat_pelanggaran.php">Catat Pelanggaran</a>
         <a href="pelanggaran.php" class="active">Data Pelanggaran</a>
         <a href="tindakan.php">Data Tindakan</a>
+        <a href="riwayat.php">Riwayat</a>
+        <a href="rekap_poin.php">Rekap Poin</a>
 
-    <?php endif; ?>
+    <?php } elseif ($role === 'wali_kelas') { ?>
+
+        <a href="pelanggaran.php" class="active">Data Pelanggaran</a>
+        <a href="tindakan.php">Data Tindakan</a>
+        <a href="riwayat.php">Riwayat</a>
+        <a href="rekap_poin.php">Rekap Poin</a>
+
+    <?php } ?>
 
     <a href="logout.php" class="logout">Logout</a>
 
 </div>
 
-<!-- KONTEN -->
 <div class="content">
 
-    <!-- HEADER -->
     <div class="card mb-3">
         <div class="card-body">
+
             <h4 class="mb-1">Data Pelanggaran</h4>
+
             <p class="text-muted mb-0">
                 Kelola data pelanggaran siswa.
             </p>
+
+            <?php if ($role === 'wali_kelas') { ?>
+
+                <p class="mt-2 mb-0">
+                    Kelas:
+                    <strong><?= htmlspecialchars($data_kelas['nama_kelas']); ?></strong>
+                    |
+                    Tahun Ajaran:
+                    <strong><?= htmlspecialchars($nama_tahun_aktif); ?></strong>
+                </p>
+
+            <?php } ?>
+
         </div>
     </div>
 
-    <!-- NOTIFIKASI -->
-    <?php if ($pesan !== ''): ?>
-        <div class="alert alert-<?= htmlspecialchars($jenis_pesan); ?> alert-dismissible fade show">
-            <?= htmlspecialchars($pesan); ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    <?php endif; ?>
+    <?php if ($pesan !== '') { ?>
 
-    <!-- FORM TAMBAH -->
-    <?php if ($tampil_form): ?>
+        <div class="alert alert-<?= htmlspecialchars($jenis_pesan); ?>">
+            <?= htmlspecialchars($pesan); ?>
+        </div>
+
+    <?php } ?>
+
+    <?php if ($tampil_form) { ?>
 
         <div class="card mb-3">
+
             <div class="card-body">
 
                 <h5 class="mb-3">Tambah Data Pelanggaran</h5>
@@ -655,59 +921,104 @@ $query_pelanggaran = $stmt_data->get_result();
                     <div class="row g-3">
 
                         <div class="col-md-6">
-                            <label class="form-label">Siswa</label>
 
-                            <select name="siswa_id" class="form-select" required>
-                                <option value="">-- Pilih Siswa --</option>
+                            <label class="form-label fw-bold">
+                                Pilih Siswa
+                            </label>
 
-                                <?php while ($siswa = mysqli_fetch_assoc($query_siswa)): ?>
+                            <select
+                                name="siswa_id"
+                                id="siswa_id"
+                                class="form-select"
+                                required
+                            >
+
+                                <option value="">
+                                    Cari nama atau NIS siswa...
+                                </option>
+
+                                <?php while ($siswa = $query_siswa->fetch_assoc()) { ?>
+
                                     <option value="<?= (int)$siswa['id']; ?>">
-                                        <?= htmlspecialchars($siswa['nis'] . ' - ' . $siswa['nama']); ?>
+
+                                        <?= htmlspecialchars(
+                                            $siswa['nis'] . ' - ' . $siswa['nama']
+                                        ); ?>
+
                                     </option>
-                                <?php endwhile; ?>
+
+                                <?php } ?>
 
                             </select>
+
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label">Jenis Pelanggaran</label>
 
-                            <select name="jenis_id" class="form-select" required>
-                                <option value="">-- Pilih Jenis Pelanggaran --</option>
+                            <label class="form-label fw-bold">
+                                Jenis Pelanggaran
+                            </label>
 
-                                <?php while ($jenis = mysqli_fetch_assoc($query_jenis)): ?>
+                            <select
+                                name="jenis_id"
+                                class="form-select"
+                                required
+                            >
+
+                                <option value="">
+                                    -- Pilih Jenis Pelanggaran --
+                                </option>
+
+                                <?php while ($jenis = mysqli_fetch_assoc($query_jenis)) { ?>
+
                                     <option value="<?= (int)$jenis['id']; ?>">
+
                                         <?= htmlspecialchars($jenis['nama_kategori'] ?? '-'); ?>
                                         -
                                         <?= htmlspecialchars($jenis['nama']); ?>
                                         (<?= (int)$jenis['poin']; ?> poin)
+
                                     </option>
-                                <?php endwhile; ?>
+
+                                <?php } ?>
 
                             </select>
+
                         </div>
 
-                        <?php if ($role === 'admin'): ?>
+                        <?php if ($role === 'admin') { ?>
 
                             <div class="col-md-6">
-                                <label class="form-label">Guru</label>
+
+                                <label class="form-label fw-bold">
+                                    Guru
+                                </label>
 
                                 <select name="guru_id" class="form-select">
-                                    <option value="0">-- Pilih Guru (Opsional) --</option>
 
-                                    <?php while ($guru = mysqli_fetch_assoc($query_guru)): ?>
+                                    <option value="0">
+                                        -- Pilih Guru (Opsional) --
+                                    </option>
+
+                                    <?php while ($guru = mysqli_fetch_assoc($query_guru)) { ?>
+
                                         <option value="<?= (int)$guru['id']; ?>">
                                             <?= htmlspecialchars($guru['nama']); ?>
                                         </option>
-                                    <?php endwhile; ?>
+
+                                    <?php } ?>
 
                                 </select>
+
                             </div>
 
-                        <?php else: ?>
+                        <?php } else { ?>
 
                             <div class="col-md-6">
-                                <label class="form-label">Guru Pencatat</label>
+
+                                <label class="form-label fw-bold">
+                                    Guru Pencatat
+                                </label>
 
                                 <input
                                     type="text"
@@ -715,12 +1026,16 @@ $query_pelanggaran = $stmt_data->get_result();
                                     value="<?= htmlspecialchars($nama); ?>"
                                     readonly
                                 >
+
                             </div>
 
-                        <?php endif; ?>
+                        <?php } ?>
 
                         <div class="col-md-6">
-                            <label class="form-label">Tanggal</label>
+
+                            <label class="form-label fw-bold">
+                                Tanggal
+                            </label>
 
                             <input
                                 type="date"
@@ -729,20 +1044,30 @@ $query_pelanggaran = $stmt_data->get_result();
                                 value="<?= date('Y-m-d'); ?>"
                                 required
                             >
+
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label">Status</label>
+
+                            <label class="form-label fw-bold">
+                                Status
+                            </label>
 
                             <select name="status" class="form-select">
+
                                 <option value="tercatat">Tercatat</option>
                                 <option value="ditindaklanjuti">Ditindaklanjuti</option>
                                 <option value="selesai">Selesai</option>
+
                             </select>
+
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label">Keterangan</label>
+
+                            <label class="form-label fw-bold">
+                                Keterangan
+                            </label>
 
                             <textarea
                                 name="keterangan"
@@ -750,48 +1075,63 @@ $query_pelanggaran = $stmt_data->get_result();
                                 class="form-control"
                                 placeholder="Keterangan pelanggaran..."
                             ></textarea>
+
                         </div>
 
                     </div>
 
-                    <div class="mt-4">
-                        <button type="submit" name="simpan" class="btn btn-stabilo">
+                    <div class="mt-3">
+
+                        <button
+                            type="submit"
+                            name="simpan"
+                            class="btn btn-stabilo btn-sm"
+                        >
                             Simpan Pelanggaran
                         </button>
 
-                        <a href="pelanggaran.php" class="btn btn-secondary">
+                        <a
+                            href="pelanggaran.php"
+                            class="btn btn-outline-secondary btn-sm"
+                        >
                             Batal
                         </a>
+
                     </div>
 
                 </form>
 
             </div>
+
         </div>
 
-    <?php endif; ?>
+    <?php } ?>
 
-    <!-- DAFTAR PELANGGARAN -->
     <div class="card">
 
         <div class="card-body">
 
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
 
                 <h5 class="mb-0">Daftar Pelanggaran</h5>
 
-                <?php if (!$tampil_form): ?>
-                    <a href="pelanggaran.php?tambah=1" class="btn btn-sm btn-stabilo">
+                <?php if (!$tampil_form) { ?>
+
+                    <a
+                        href="pelanggaran.php?tambah=1"
+                        class="btn btn-sm btn-stabilo"
+                    >
                         + Tambah Pelanggaran
                     </a>
-                <?php endif; ?>
+
+                <?php } ?>
 
             </div>
 
-            <!-- PENCARIAN -->
             <form method="GET" class="row g-2 mb-3">
 
                 <div class="col-md-5">
+
                     <input
                         type="text"
                         name="cari"
@@ -799,28 +1139,36 @@ $query_pelanggaran = $stmt_data->get_result();
                         placeholder="Cari NIS, siswa, kategori, jenis, atau guru..."
                         value="<?= htmlspecialchars($cari); ?>"
                     >
+
                 </div>
 
                 <div class="col-auto">
+
                     <button type="submit" class="btn btn-secondary btn-sm">
                         Cari
                     </button>
 
-                    <?php if ($cari !== ''): ?>
-                        <a href="pelanggaran.php" class="btn btn-outline-secondary btn-sm">
+                    <?php if ($cari !== '') { ?>
+
+                        <a
+                            href="pelanggaran.php"
+                            class="btn btn-outline-secondary btn-sm"
+                        >
                             Reset
                         </a>
-                    <?php endif; ?>
+
+                    <?php } ?>
+
                 </div>
 
             </form>
 
-            <!-- TABEL -->
             <div class="table-responsive">
 
                 <table class="table table-bordered table-hover align-middle">
 
                     <thead class="table-secondary">
+
                         <tr>
                             <th>No</th>
                             <th>NIS</th>
@@ -834,72 +1182,76 @@ $query_pelanggaran = $stmt_data->get_result();
                             <th>Status</th>
                             <th>Aksi</th>
                         </tr>
+
                     </thead>
 
                     <tbody>
 
-                        <?php if ($query_pelanggaran && $query_pelanggaran->num_rows > 0): ?>
+                    <?php if ($query_pelanggaran->num_rows > 0) { ?>
 
-                            <?php $no = $offset + 1; ?>
+                        <?php $no = $mulai + 1; ?>
 
-                            <?php while ($row = $query_pelanggaran->fetch_assoc()): ?>
+                        <?php while ($row = $query_pelanggaran->fetch_assoc()) { ?>
 
-                                <?php
-                                $status = $row['status'] ?? 'tercatat';
+                            <?php
+                            $status = $row['status'] ?? 'tercatat';
 
-                                $kelas_status = in_array(
-                                    $status,
-                                    ['tercatat', 'ditindaklanjuti', 'selesai'],
-                                    true
-                                ) ? $status : 'tercatat';
-                                ?>
+                            $kelas_status = in_array(
+                                $status,
+                                ['tercatat', 'ditindaklanjuti', 'selesai'],
+                                true
+                            ) ? $status : 'tercatat';
+                            ?>
 
-                                <tr>
-                                    <td><?= $no++; ?></td>
+                            <tr>
 
-                                    <td>
-                                        <?= htmlspecialchars($row['nis'] ?? '-'); ?>
-                                    </td>
+                                <td><?= $no++; ?></td>
 
-                                    <td>
-                                        <strong>
-                                            <?= htmlspecialchars($row['nama_siswa'] ?? '-'); ?>
-                                        </strong>
-                                    </td>
+                                <td>
+                                    <?= htmlspecialchars($row['nis'] ?? '-'); ?>
+                                </td>
 
-                                    <td>
-                                        <?= htmlspecialchars($row['nama_kategori'] ?? '-'); ?>
-                                    </td>
+                                <td>
+                                    <strong>
+                                        <?= htmlspecialchars($row['nama_siswa'] ?? '-'); ?>
+                                    </strong>
+                                </td>
 
-                                    <td>
-                                        <?= htmlspecialchars($row['nama_jenis'] ?? '-'); ?>
-                                    </td>
+                                <td>
+                                    <?= htmlspecialchars($row['nama_kategori'] ?? '-'); ?>
+                                </td>
 
-                                    <td>
-                                        <strong>
-                                            <?= htmlspecialchars($row['poin'] ?? '0'); ?>
-                                        </strong>
-                                    </td>
+                                <td>
+                                    <?= htmlspecialchars($row['nama_jenis'] ?? '-'); ?>
+                                </td>
 
-                                    <td>
-                                        <?= htmlspecialchars($row['nama_guru'] ?? '-'); ?>
-                                    </td>
+                                <td>
+                                    <strong><?= (int)($row['poin'] ?? 0); ?></strong>
+                                </td>
 
-                                    <td>
-                                        <?= htmlspecialchars($row['tanggal'] ?? '-'); ?>
-                                    </td>
+                                <td>
+                                    <?= htmlspecialchars($row['nama_guru'] ?? '-'); ?>
+                                </td>
 
-                                    <td>
-                                        <?= htmlspecialchars($row['keterangan'] ?? '-'); ?>
-                                    </td>
+                                <td>
+                                    <?= htmlspecialchars($row['tanggal'] ?? '-'); ?>
+                                </td>
 
-                                    <td>
-                                        <span class="status <?= htmlspecialchars($kelas_status); ?>">
-                                            <?= htmlspecialchars(ucfirst($status)); ?>
-                                        </span>
-                                    </td>
+                                <td>
+                                    <?= htmlspecialchars($row['keterangan'] ?? '-'); ?>
+                                </td>
 
-                                    <td class="text-nowrap">
+                                <td>
+
+                                    <span class="status <?= htmlspecialchars($kelas_status); ?>">
+                                        <?= htmlspecialchars(ucfirst($status)); ?>
+                                    </span>
+
+                                </td>
+
+                                <td class="text-nowrap">
+
+                                    <?php if ($role === 'admin') { ?>
 
                                         <a
                                             href="edit_pelanggaran.php?id=<?= (int)$row['id']; ?>"
@@ -908,48 +1260,53 @@ $query_pelanggaran = $stmt_data->get_result();
                                             Edit
                                         </a>
 
-                                        <form
-                                            method="POST"
-                                            class="d-inline"
-                                            onsubmit="return confirm('Yakin ingin menghapus data pelanggaran ini?');"
+                                    <?php } ?>
+
+                                    <form
+                                        method="POST"
+                                        class="d-inline"
+                                        onsubmit="return confirm('Yakin ingin menghapus data pelanggaran ini?');"
+                                    >
+
+                                        <input
+                                            type="hidden"
+                                            name="csrf_token"
+                                            value="<?= htmlspecialchars($_SESSION['csrf_token']); ?>"
                                         >
 
-                                            <input
-                                                type="hidden"
-                                                name="csrf_token"
-                                                value="<?= htmlspecialchars($_SESSION['csrf_token']); ?>"
-                                            >
+                                        <input
+                                            type="hidden"
+                                            name="id_hapus"
+                                            value="<?= (int)$row['id']; ?>"
+                                        >
 
-                                            <input
-                                                type="hidden"
-                                                name="id_hapus"
-                                                value="<?= (int)$row['id']; ?>"
-                                            >
+                                        <button
+                                            type="submit"
+                                            name="hapus"
+                                            class="btn btn-sm btn-danger"
+                                        >
+                                            Hapus
+                                        </button>
 
-                                            <button
-                                                type="submit"
-                                                name="hapus"
-                                                class="btn btn-sm btn-danger"
-                                            >
-                                                Hapus
-                                            </button>
+                                    </form>
 
-                                        </form>
-
-                                    </td>
-                                </tr>
-
-                            <?php endwhile; ?>
-
-                        <?php else: ?>
-
-                            <tr>
-                                <td colspan="11" class="text-center py-4">
-                                    Belum ada data pelanggaran.
                                 </td>
+
                             </tr>
 
-                        <?php endif; ?>
+                        <?php } ?>
+
+                    <?php } else { ?>
+
+                        <tr>
+
+                            <td colspan="11" class="text-center py-4">
+                                Belum ada data pelanggaran.
+                            </td>
+
+                        </tr>
+
+                    <?php } ?>
 
                     </tbody>
 
@@ -957,23 +1314,42 @@ $query_pelanggaran = $stmt_data->get_result();
 
             </div>
 
-            <!-- INFO DATA DAN PAGINATION -->
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="text-muted small">
 
-                <small class="text-muted">
-                    Menampilkan
-                    <?= $total_data > 0 ? $offset + 1 : 0; ?>
-                    -
-                    <?= min($offset + $batas, $total_data); ?>
-                    dari <?= $total_data; ?> data pelanggaran.
-                </small>
+                Menampilkan
+                <?= $total_data > 0 ? $mulai + 1 : 0; ?>
+                -
+                <?= min($mulai + $per_halaman, $total_data); ?>
+                dari
+                <?= $total_data; ?>
+                data pelanggaran.
 
-                <nav>
+            </div>
+
+            <?php if ($total_halaman > 1) { ?>
+
+                <nav class="mt-3">
+
                     <ul class="pagination pagination-sm mb-0">
 
-                        <?php for ($i = 1; $i <= $total_halaman; $i++): ?>
+                        <?php if ($halaman > 1) { ?>
 
-                            <li class="page-item <?= ($halaman == $i) ? 'active' : ''; ?>">
+                            <li class="page-item">
+
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    &laquo;
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
+
+                        <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+
+                            <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
 
                                 <a
                                     class="page-link"
@@ -984,19 +1360,66 @@ $query_pelanggaran = $stmt_data->get_result();
 
                             </li>
 
-                        <?php endfor; ?>
+                        <?php } ?>
+
+                        <?php if ($halaman < $total_halaman) { ?>
+
+                            <li class="page-item">
+
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    &raquo;
+                                </a>
+
+                            </li>
+
+                        <?php } ?>
 
                     </ul>
+
                 </nav>
 
-            </div>
+            <?php } ?>
 
         </div>
+
     </div>
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/js/tom-select.complete.min.js"></script>
+
+<script>
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    const pilihanSiswa = document.getElementById("siswa_id");
+
+    if (pilihanSiswa) {
+
+        new TomSelect("#siswa_id", {
+            create: false,
+            maxOptions: 100,
+            placeholder: "Cari nama atau NIS siswa...",
+            searchField: ["text"],
+            sortField: {
+                field: "text",
+                direction: "asc"
+            },
+            allowEmptyOption: true
+        });
+
+    }
+
+});
+
+</script>
 
 </body>
 </html>
+
+<?php
+$stmt_data->close();
+?>

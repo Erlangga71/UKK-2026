@@ -311,6 +311,7 @@ if (!$data) {
 <html lang="id">
 
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -341,10 +342,12 @@ body {
     overflow-y: auto;
 }
 
-/* MENYAMAKAN POSISI MENU DENGAN DATA GURU */
-
-.sidebar-spacer {
-    height: 78px;
+.sidebar-title {
+    color: white;
+    font-size: 19px;
+    font-weight: bold;
+    margin: 0 8px 25px;
+    line-height: 1.4;
 }
 
 .sidebar a {
@@ -455,7 +458,9 @@ body {
 
 <div class="sidebar">
 
-    <div class="sidebar-spacer"></div>
+    <div class="sidebar-title">
+        Pelanggaran<br>Siswa
+    </div>
 
     <a href="dashboard.php">Dashboard</a>
     <a href="kelola_siswa.php">Data Siswa</a>
@@ -466,14 +471,12 @@ body {
     <a href="penempatan_siswa.php">Penempatan Siswa</a>
     <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
     <a href="pelanggaran.php">Data Pelanggaran</a>
-    <a href="tindakan.php">Data Tindakan</a>
     <a href="laporan.php">Laporan</a>
     <a href="about_me.php">About Me</a>
 
     <a href="logout.php" class="logout">Logout</a>
 
 </div>
-
 
 <!-- CONTENT -->
 
@@ -495,7 +498,6 @@ body {
 
     </div>
 
-
     <!-- PESAN ERROR -->
 
     <?php if ($error != '') { ?>
@@ -505,7 +507,6 @@ body {
         </div>
 
     <?php } ?>
-
 
     <!-- FORM TAMBAH -->
 
@@ -626,7 +627,6 @@ body {
 
     <?php } ?>
 
-
     <!-- DAFTAR TAHUN AJARAN -->
 
     <div class="card">
@@ -649,7 +649,6 @@ body {
                 <?php } ?>
 
             </div>
-
 
             <!-- PENCARIAN -->
 
@@ -687,7 +686,6 @@ body {
                 </div>
 
             </form>
-
 
             <!-- TABEL TAHUN AJARAN -->
 
@@ -813,7 +811,6 @@ body {
 
             </div>
 
-
             <!-- INFORMASI DATA -->
 
             <div class="text-muted small">
@@ -827,7 +824,6 @@ body {
                 data tahun ajaran.
 
             </div>
-
 
             <!-- PAGINATION -->
 
@@ -852,7 +848,6 @@ body {
 
                         <?php } ?>
 
-
                         <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
 
                             <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
@@ -867,7 +862,6 @@ body {
                             </li>
 
                         <?php } ?>
-
 
                         <?php if ($halaman < $total_halaman) { ?>
 

@@ -1,8 +1,11 @@
 
 <?php
 
-session_start();
-include "database.php";
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+require_once "database.php";
 
 $pesan = "";
 
@@ -11,7 +14,7 @@ if (isset($_POST['login'])) {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    if ($email == "" || $password == "") {
+    if ($email === "" || $password === "") {
 
         $pesan = "Email dan password wajib diisi.";
 
@@ -38,7 +41,7 @@ if (isset($_POST['login'])) {
             die("Error database: " . mysqli_error($koneksi));
         }
 
-        if (mysqli_num_rows($query) == 1) {
+        if (mysqli_num_rows($query) === 1) {
 
             $user = mysqli_fetch_assoc($query);
 
@@ -50,7 +53,11 @@ if (isset($_POST['login'])) {
 
                 $pesan = "Email atau password salah.";
 
-            } elseif (!in_array($user['role'], ['admin', 'guru'])) {
+            } elseif (!in_array(
+                $user['role'],
+                ['admin', 'guru', 'wali_kelas'],
+                true
+            )) {
 
                 $pesan = "Akun ini tidak memiliki akses login.";
 
@@ -60,6 +67,7 @@ if (isset($_POST['login'])) {
 
                 $_SESSION['login'] = true;
                 $_SESSION['user_id'] = $user['id'];
+                $_SESSION['id'] = $user['id'];
                 $_SESSION['nama'] = $user['nama'];
                 $_SESSION['email'] = $user['email'];
                 $_SESSION['role'] = $user['role'];

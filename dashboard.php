@@ -1,78 +1,328 @@
-
 <?php
-session_start();
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 require_once "database.php";
 require_once "auth.php";
 
-hanyaRole(['admin', 'guru']);
+hanyaRole(['admin', 'guru', 'wali_kelas']);
 
 $nama  = $_SESSION['nama'] ?? 'Pengguna';
 $role  = $_SESSION['role'] ?? '';
 $email = $_SESSION['email'] ?? '-';
 
-$jabatan = ($role == 'admin') ? 'Administrator' : 'Guru';
+if ($role === 'admin') {
+    $jabatan = 'Administrator';
+} elseif ($role === 'wali_kelas') {
+    $jabatan = 'Wali Kelas';
+} else {
+    $jabatan = 'Guru';
+}
 
-/* TOTAL SISWA AKTIF */
-$query_siswa = mysqli_query(
+/* =====================================
+   TAHUN AJARAN AKTIF
+===================================== */
+
+$tahun_ajaran_id = 0;
+$nama_tahun_ajaran = '';
+
+$query_tahun = mysqli_query(
     $koneksi,
-    "SELECT COUNT(*) AS total FROM siswa WHERE aktif = 1"
+    "SELECT id, nama
+     FROM tahun_ajaran
+     WHERE aktif = 1
+     LIMIT 1"
 );
-$total_siswa = $query_siswa
-    ? mysqli_fetch_assoc($query_siswa)['total']
-    : 0;
 
-/* TOTAL PELANGGARAN */
+if ($query_tahun && mysqli_num_rows($query_tahun) > 0) {
+    $data_tahun = mysqli_fetch_assoc($query_tahun);
+    $tahun_ajaran_id = (int) $data_tahun['id'];
+    $nama_tahun_ajaran = $data_tahun['nama'];
+}
+
+/* =====================================
+   IDENTITAS WALI KELAS
+===================================== */
+
+$guru_id_login = 0;
+$kelas_id_login = 0;
+$nama_kelas_login = '';
+
+if ($role === 'wali_kelas') {
+
+    $stmt_user = mysqli_prepare(
+        $koneksi,
+        "SELECT guru_id
+         FROM users
+         WHERE email = ?
+         LIMIT 1"
+    );
+
+    if ($stmt_user) {
+        mysqli_stmt_bind_param($stmt_user, "s", $email);
+        mysqli_stmt_execute($stmt_user);
+
+        $result_user = mysqli_stmt_get_result($stmt_user);
+
+        if ($result_user && mysqli_num_rows($result_user) > 0) {
+            $data_user = mysqli_fetch_assoc($result_user);
+            $guru_id_login = (int) ($data_user['guru_id'] ?? 0);
+        }
+
+        mysqli_stmt_close($stmt_user);
+    }
+
+    if ($guru_id_login <= 0) {
+
+        $stmt_guru = mysqli_prepare(
+            $koneksi,
+            "SELECT id
+             FROM guru
+             WHERE email = ?
+             LIMIT 1"
+        );
+
+        if ($stmt_guru) {
+            mysqli_stmt_bind_param($stmt_guru, "s", $email);
+            mysqli_stmt_execute($stmt_guru);
+
+            $result_guru = mysqli_stmt_get_result($stmt_guru);
+
+            if ($result_guru && mysqli_num_rows($result_guru) > 0) {
+                $data_guru = mysqli_fetch_assoc($result_guru);
+                $guru_id_login = (int) $data_guru['id'];
+            }
+
+            mysqli_stmt_close($stmt_guru);
+        }
+    }
+
+    if ($guru_id_login > 0 && $tahun_ajaran_id > 0) {
+
+        $stmt_kelas = mysqli_prepare(
+            $koneksi,
+            "SELECT
+                wk.kelas_id,
+                k.nama_kelas
+             FROM wali_kelas wk
+             JOIN kelas k ON wk.kelas_id = k.id
+             WHERE wk.guru_id = ?
+               AND wk.tahun_ajaran_id = ?
+             LIMIT 1"
+        );
+
+        if ($stmt_kelas) {
+            mysqli_stmt_bind_param(
+                $stmt_kelas,
+                "ii",
+                $guru_id_login,
+                $tahun_ajaran_id
+            );
+
+            mysqli_stmt_execute($stmt_kelas);
+
+            $result_kelas = mysqli_stmt_get_result($stmt_kelas);
+
+            if ($result_kelas && mysqli_num_rows($result_kelas) > 0) {
+                $data_kelas = mysqli_fetch_assoc($result_kelas);
+
+                $kelas_id_login = (int) $data_kelas['kelas_id'];
+                $nama_kelas_login = $data_kelas['nama_kelas'];
+            }
+
+            mysqli_stmt_close($stmt_kelas);
+        }
+    }
+}
+
+/* =====================================
+   FILTER PELANGGARAN WALI KELAS
+===================================== */
+
+$filter_pelanggaran = "";
+
+if ($role === 'wali_kelas') {
+
+    if ($kelas_id_login > 0 && $tahun_ajaran_id > 0) {
+
+        $filter_pelanggaran = "
+            AND EXISTS (
+                SELECT 1
+                FROM penempatan_siswa ps
+                WHERE ps.siswa_id = pelanggaran.siswa_id
+                  AND ps.kelas_id = $kelas_id_login
+                  AND ps.tahun_ajaran_id = $tahun_ajaran_id
+            )
+        ";
+
+    } else {
+        $filter_pelanggaran = " AND 1 = 0 ";
+    }
+}
+
+/* =====================================
+   TOTAL SISWA AKTIF
+===================================== */
+
+if ($role === 'wali_kelas') {
+
+    if ($kelas_id_login > 0 && $tahun_ajaran_id > 0) {
+
+        $query_siswa = mysqli_query(
+            $koneksi,
+            "SELECT COUNT(DISTINCT s.id) AS total
+             FROM siswa s
+             JOIN penempatan_siswa ps
+                ON ps.siswa_id = s.id
+             WHERE s.aktif = 1
+               AND ps.kelas_id = $kelas_id_login
+               AND ps.tahun_ajaran_id = $tahun_ajaran_id"
+        );
+
+    } else {
+        $query_siswa = false;
+    }
+
+} else {
+
+    $query_siswa = mysqli_query(
+        $koneksi,
+        "SELECT COUNT(*) AS total
+         FROM siswa
+         WHERE aktif = 1"
+    );
+}
+
+$total_siswa = 0;
+
+if ($query_siswa) {
+    $data = mysqli_fetch_assoc($query_siswa);
+    $total_siswa = (int) $data['total'];
+}
+
+/* =====================================
+   TOTAL PELANGGARAN
+===================================== */
+
 $query_pelanggaran = mysqli_query(
     $koneksi,
-    "SELECT COUNT(*) AS total FROM pelanggaran"
+    "SELECT COUNT(DISTINCT pelanggaran.id) AS total
+     FROM pelanggaran
+     WHERE 1 = 1
+     $filter_pelanggaran"
 );
-$total_pelanggaran = $query_pelanggaran
-    ? mysqli_fetch_assoc($query_pelanggaran)['total']
-    : 0;
 
-/* PELANGGARAN BULAN INI */
+$total_pelanggaran = 0;
+
+if ($query_pelanggaran) {
+    $data = mysqli_fetch_assoc($query_pelanggaran);
+    $total_pelanggaran = (int) $data['total'];
+}
+
+/* =====================================
+   PELANGGARAN BULAN INI
+===================================== */
+
 $query_bulan = mysqli_query(
     $koneksi,
-    "SELECT COUNT(*) AS total
+    "SELECT COUNT(DISTINCT pelanggaran.id) AS total
      FROM pelanggaran
-     WHERE MONTH(tanggal) = MONTH(CURDATE())
-     AND YEAR(tanggal) = YEAR(CURDATE())"
+     WHERE MONTH(pelanggaran.tanggal) = MONTH(CURDATE())
+       AND YEAR(pelanggaran.tanggal) = YEAR(CURDATE())
+       $filter_pelanggaran"
 );
-$total_bulan = $query_bulan
-    ? mysqli_fetch_assoc($query_bulan)['total']
-    : 0;
 
-/* SISWA BERMASALAH */
+$total_bulan = 0;
+
+if ($query_bulan) {
+    $data = mysqli_fetch_assoc($query_bulan);
+    $total_bulan = (int) $data['total'];
+}
+
+/* =====================================
+   SISWA BERMASALAH
+===================================== */
+
 $query_bermasalah = mysqli_query(
     $koneksi,
-    "SELECT COUNT(DISTINCT siswa_id) AS total
-     FROM pelanggaran"
-);
-$total_bermasalah = $query_bermasalah
-    ? mysqli_fetch_assoc($query_bermasalah)['total']
-    : 0;
-
-/* PELANGGARAN TERBARU */
-$query_terbaru = mysqli_query(
-    $koneksi,
-    "SELECT
-        siswa.nama AS nama_siswa,
-        jenis_pelanggaran.nama AS nama_pelanggaran,
-        pelanggaran.tanggal,
-        pelanggaran.keterangan
+    "SELECT COUNT(DISTINCT pelanggaran.siswa_id) AS total
      FROM pelanggaran
-     JOIN siswa ON pelanggaran.siswa_id = siswa.id
-     JOIN jenis_pelanggaran
-        ON pelanggaran.jenis_id = jenis_pelanggaran.id
-     ORDER BY pelanggaran.tanggal DESC, pelanggaran.id DESC
-     LIMIT 5"
+     WHERE 1 = 1
+     $filter_pelanggaran"
 );
+
+$total_bermasalah = 0;
+
+if ($query_bermasalah) {
+    $data = mysqli_fetch_assoc($query_bermasalah);
+    $total_bermasalah = (int) $data['total'];
+}
+
+/* =====================================
+   DATA TABEL DASHBOARD
+===================================== */
+
+if ($role === 'wali_kelas') {
+
+    // Tampilkan semua siswa di kelas wali kelas,
+    // termasuk siswa yang belum mempunyai pelanggaran.
+
+    if ($kelas_id_login > 0 && $tahun_ajaran_id > 0) {
+
+        $query_terbaru = mysqli_query(
+            $koneksi,
+            "SELECT
+                s.id,
+                s.nis,
+                s.nama AS nama_siswa,
+                COUNT(DISTINCT p.id) AS total_pelanggaran
+             FROM siswa s
+             JOIN penempatan_siswa ps
+                ON ps.siswa_id = s.id
+             LEFT JOIN pelanggaran p
+                ON p.siswa_id = s.id
+             WHERE s.aktif = 1
+               AND ps.kelas_id = $kelas_id_login
+               AND ps.tahun_ajaran_id = $tahun_ajaran_id
+             GROUP BY s.id, s.nis, s.nama
+             ORDER BY s.nama ASC"
+        );
+
+    } else {
+        $query_terbaru = false;
+    }
+
+} else {
+
+    // Admin dan Guru tetap melihat pelanggaran terbaru.
+
+    $query_terbaru = mysqli_query(
+        $koneksi,
+        "SELECT
+            siswa.nama AS nama_siswa,
+            jenis_pelanggaran.nama AS nama_pelanggaran,
+            pelanggaran.tanggal,
+            pelanggaran.keterangan
+         FROM pelanggaran
+         JOIN siswa
+            ON pelanggaran.siswa_id = siswa.id
+         JOIN jenis_pelanggaran
+            ON pelanggaran.jenis_id = jenis_pelanggaran.id
+         ORDER BY pelanggaran.tanggal DESC,
+                  pelanggaran.id DESC
+         LIMIT 5"
+    );
+}
+
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -81,6 +331,7 @@ $query_terbaru = mysqli_query(
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <style>
+
         body {
             margin: 0;
             background: #f4f6f8;
@@ -88,7 +339,6 @@ $query_terbaru = mysqli_query(
             color: #212529;
         }
 
-        /* SIDEBAR */
         .sidebar {
             position: fixed;
             top: 0;
@@ -131,7 +381,6 @@ $query_terbaru = mysqli_query(
             background: #941d1d;
         }
 
-        /* KONTEN */
         .content {
             margin-left: 220px;
             padding: 30px;
@@ -185,11 +434,6 @@ $query_terbaru = mysqli_query(
             height: 100%;
         }
 
-        .stat-icon {
-            font-size: 21px;
-            margin-bottom: 8px;
-        }
-
         .stat-label {
             color: #687280;
             font-size: 11px;
@@ -229,8 +473,8 @@ $query_terbaru = mysqli_query(
             color: white;
         }
 
-        /* TAMPILAN HP */
         @media (max-width: 700px) {
+
             .sidebar {
                 position: relative;
                 width: 100%;
@@ -241,75 +485,69 @@ $query_terbaru = mysqli_query(
                 margin-left: 0;
                 padding: 15px;
             }
+
         }
+
     </style>
+
 </head>
 
 <body>
 
 <!-- SIDEBAR -->
+
 <div class="sidebar">
 
     <div class="sidebar-title">
-        ⚖ Pelanggaran<br>Siswa
+        Pelanggaran<br>Siswa
     </div>
 
     <nav class="nav flex-column">
 
         <a href="dashboard.php" class="nav-link active">
-             Dashboard
+            Dashboard
         </a>
 
-        <?php if ($role == 'admin') { ?>
+        <?php if ($role === 'admin') { ?>
 
-            <!-- MENU ADMIN -->
             <a href="kelola_siswa.php" class="nav-link">Data Siswa</a>
             <a href="kelola_guru.php" class="nav-link">Data Guru</a>
             <a href="kelola_kelas.php" class="nav-link">Data Kelas</a>
             <a href="kelola_tahun_ajaran.php" class="nav-link">Tahun Ajaran</a>
             <a href="kelola_wali_kelas.php" class="nav-link">Wali Kelas</a>
             <a href="penempatan_siswa.php" class="nav-link">Penempatan Siswa</a>
-            <a href="kelola_pelanggaran_kategori.php" class="nav-link">
-                 Kategori Pelanggaran
-            </a>
+            <a href="kelola_pelanggaran_kategori.php" class="nav-link">Kategori Pelanggaran</a>
+            <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
+            <a href="laporan.php" class="nav-link">Laporan</a>
+            <a href="about_me.php" class="nav-link">About Me</a>
+
+        <?php } elseif ($role === 'guru') { ?>
+
+            <a href="catat_pelanggaran.php" class="nav-link">Catat Pelanggaran</a>
             <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
             <a href="tindakan.php" class="nav-link">Data Tindakan</a>
-            <a href="laporan.php" class="nav-link">Laporan</a>
-            <a href="about_me.php" class="nav-link">ℹ About Me</a>
+            <a href="riwayat.php" class="nav-link">Riwayat</a>
+            <a href="rekap_poin.php" class="nav-link">Rekap Poin</a>
 
-        <?php } elseif ($role == 'guru') { ?>
+        <?php } elseif ($role === 'wali_kelas') { ?>
 
-            <!-- MENU GURU -->
-            <a href="catat_pelanggaran.php" class="nav-link">
-                Catat Pelanggaran
-            </a>
-            <a href="pelanggaran.php" class="nav-link">
-                Data Pelanggaran
-            </a>
-            <a href="tindakan.php" class="nav-link">
-                Data Tindakan
-            </a>
-            <a href="riwayat.php" class="nav-link">
-                Riwayat
-            </a>
-            <a href="rekap_poin.php" class="nav-link">
-                Rekap Poin
-            </a>
+            <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
+            <a href="tindakan.php" class="nav-link">Data Tindakan</a>
+            <a href="riwayat.php" class="nav-link">Riwayat</a>
+            <a href="rekap_poin.php" class="nav-link">Rekap Poin</a>
 
         <?php } ?>
 
-        <a href="logout.php" class="nav-link logout">
-             Logout
-        </a>
+        <a href="logout.php" class="nav-link logout">Logout</a>
 
     </nav>
 
 </div>
 
 <!-- KONTEN -->
+
 <div class="content">
 
-    <!-- HEADER -->
     <div class="header-box">
 
         <h4>Sistem Informasi Pelanggaran Siswa</h4>
@@ -317,6 +555,7 @@ $query_terbaru = mysqli_query(
         <p>Dashboard Sistem</p>
 
         <div class="info-user">
+
             <strong><?= htmlspecialchars($jabatan); ?></strong>
 
             &nbsp; | &nbsp;
@@ -326,73 +565,128 @@ $query_terbaru = mysqli_query(
             &nbsp; | &nbsp;
 
             Role: <?= htmlspecialchars($role); ?>
+
         </div>
 
     </div>
 
-    <!-- SELAMAT DATANG -->
     <div class="welcome">
 
         <h5>
             Selamat Datang, <?= htmlspecialchars($nama); ?>
         </h5>
 
-        <p>
-            Kelola dan pantau data pelanggaran siswa melalui sistem ini.
-        </p>
+        <?php if ($role === 'wali_kelas') { ?>
+
+            <p>
+                <?php if ($kelas_id_login > 0) { ?>
+
+                    Pantau informasi seluruh siswa kelas
+                    <strong><?= htmlspecialchars($nama_kelas_login); ?></strong>.
+
+                <?php } else { ?>
+
+                    Data kelas wali kelas belum ditemukan pada tahun ajaran aktif.
+
+                <?php } ?>
+            </p>
+
+        <?php } else { ?>
+
+            <p>
+                Kelola dan pantau data pelanggaran siswa melalui sistem ini.
+            </p>
+
+        <?php } ?>
 
     </div>
 
     <!-- STATISTIK -->
+
     <div class="row g-3 mb-4">
 
         <div class="col-md-3 col-sm-6">
+
             <div class="stat-card">
-                <div class="stat-icon"></div>
+
                 <div class="stat-label">Total Siswa Aktif</div>
-                <p class="stat-number"><?= $total_siswa; ?></p>
+
+                <p class="stat-number">
+                    <?= $total_siswa; ?>
+                </p>
+
             </div>
+
         </div>
 
         <div class="col-md-3 col-sm-6">
+
             <div class="stat-card">
-                <div class="stat-icon"></div>
+
                 <div class="stat-label">Total Pelanggaran</div>
-                <p class="stat-number"><?= $total_pelanggaran; ?></p>
+
+                <p class="stat-number">
+                    <?= $total_pelanggaran; ?>
+                </p>
+
             </div>
+
         </div>
 
         <div class="col-md-3 col-sm-6">
+
             <div class="stat-card">
-                <div class="stat-icon"></div>
+
                 <div class="stat-label">Pelanggaran Bulan Ini</div>
-                <p class="stat-number"><?= $total_bulan; ?></p>
+
+                <p class="stat-number">
+                    <?= $total_bulan; ?>
+                </p>
+
             </div>
+
         </div>
 
         <div class="col-md-3 col-sm-6">
+
             <div class="stat-card">
-                <div class="stat-icon"></div>
+
                 <div class="stat-label">Siswa Bermasalah</div>
-                <p class="stat-number"><?= $total_bermasalah; ?></p>
+
+                <p class="stat-number">
+                    <?= $total_bermasalah; ?>
+                </p>
+
             </div>
+
         </div>
 
     </div>
 
-    <!-- TABEL PELANGGARAN -->
+    <!-- TABEL DASHBOARD -->
+
     <div class="main-box">
 
         <div class="d-flex justify-content-between align-items-center mb-3">
 
             <div>
+
                 <h6 class="fw-bold mb-1">
-                    Informasi Pelanggaran
+
+                    <?= $role === 'wali_kelas'
+                        ? 'Data Seluruh Siswa Kelas'
+                        : 'Informasi Pelanggaran'; ?>
+
                 </h6>
 
                 <small class="text-secondary">
-                    Daftar pelanggaran siswa terbaru
+
+                    <?= $role === 'wali_kelas'
+                        ? 'Daftar seluruh siswa, termasuk yang belum melakukan pelanggaran'
+                        : 'Daftar pelanggaran siswa terbaru'; ?>
+
                 </small>
+
             </div>
 
             <a href="pelanggaran.php" class="btn btn-sm btn-lihat">
@@ -406,55 +700,119 @@ $query_terbaru = mysqli_query(
             <table class="table table-bordered table-hover mb-0">
 
                 <thead>
-                    <tr>
-                        <th width="6%">No</th>
-                        <th>Nama Siswa</th>
-                        <th>Jenis Pelanggaran</th>
-                        <th>Tanggal</th>
-                        <th>Keterangan</th>
-                    </tr>
+
+                    <?php if ($role === 'wali_kelas') { ?>
+
+                        <tr>
+                            <th width="6%">No</th>
+                            <th>NIS</th>
+                            <th>Nama Siswa</th>
+                            <th>Jumlah Pelanggaran</th>
+                            <th>Status</th>
+                        </tr>
+
+                    <?php } else { ?>
+
+                        <tr>
+                            <th width="6%">No</th>
+                            <th>Nama Siswa</th>
+                            <th>Jenis Pelanggaran</th>
+                            <th>Tanggal</th>
+                            <th>Keterangan</th>
+                        </tr>
+
+                    <?php } ?>
+
                 </thead>
 
                 <tbody>
 
                     <?php
+
                     $no = 1;
 
                     if ($query_terbaru && mysqli_num_rows($query_terbaru) > 0) {
 
                         while ($data = mysqli_fetch_assoc($query_terbaru)) {
+
                     ?>
 
                         <tr>
+
                             <td><?= $no++; ?></td>
 
-                            <td>
-                                <?= htmlspecialchars($data['nama_siswa']); ?>
-                            </td>
+                            <?php if ($role === 'wali_kelas') { ?>
 
-                            <td>
-                                <?= htmlspecialchars($data['nama_pelanggaran']); ?>
-                            </td>
+                                <td>
+                                    <?= htmlspecialchars($data['nis'] ?? '-'); ?>
+                                </td>
 
-                            <td>
-                                <?= htmlspecialchars($data['tanggal']); ?>
-                            </td>
+                                <td>
+                                    <?= htmlspecialchars($data['nama_siswa']); ?>
+                                </td>
 
-                            <td>
-                                <?= htmlspecialchars($data['keterangan'] ?? '-'); ?>
-                            </td>
+                                <td>
+                                    <?= (int) $data['total_pelanggaran']; ?>
+                                </td>
+
+                                <td>
+
+                                    <?php if ((int) $data['total_pelanggaran'] > 0) { ?>
+
+                                        <span class="badge bg-danger">
+                                            Ada Pelanggaran
+                                        </span>
+
+                                    <?php } else { ?>
+
+                                        <span class="badge bg-success">
+                                            Belum Ada Pelanggaran
+                                        </span>
+
+                                    <?php } ?>
+
+                                </td>
+
+                            <?php } else { ?>
+
+                                <td>
+                                    <?= htmlspecialchars($data['nama_siswa']); ?>
+                                </td>
+
+                                <td>
+                                    <?= htmlspecialchars($data['nama_pelanggaran']); ?>
+                                </td>
+
+                                <td>
+                                    <?= htmlspecialchars($data['tanggal']); ?>
+                                </td>
+
+                                <td>
+                                    <?= htmlspecialchars($data['keterangan'] ?? '-'); ?>
+                                </td>
+
+                            <?php } ?>
+
                         </tr>
 
                     <?php
+
                         }
 
                     } else {
+
                     ?>
 
                         <tr>
+
                             <td colspan="5" class="text-center">
-                                Belum ada data pelanggaran.
+
+                                <?= $role === 'wali_kelas'
+                                    ? 'Belum ada siswa yang ditempatkan di kelas ini.'
+                                    : 'Belum ada data pelanggaran.'; ?>
+
                             </td>
+
                         </tr>
 
                     <?php } ?>

@@ -193,7 +193,7 @@ if (isset($_POST['update'])) {
 <body>
 
 <div class="sidebar">
-    <div class="sidebar-title">⚖ Pelanggaran<br>Siswa</div>
+    <div class="sidebar-title"> Pelanggaran<br>Siswa</div>
 
     <a href="dashboard.php"> Dashboard</a>
     <a href="kelola_siswa.php">Data Siswa</a>
@@ -202,11 +202,11 @@ if (isset($_POST['update'])) {
     <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
     <a href="kelola_wali_kelas.php">Wali Kelas</a>
     <a href="penempatan_siswa.php">Penempatan Siswa</a>
-    <a href="kelola_pelanggaran_kategori.php" class="active">⚠ Kategori Pelanggaran</a>
+    <a href="kelola_pelanggaran_kategori.php" class="active"> Kategori Pelanggaran</a>
     <a href="pelanggaran.php">Data Pelanggaran</a>
     <a href="tindakan.php">Data Tindakan</a>
     <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">ℹ About Me</a>
+    <a href="about_me.php"> About Me</a>
     <a href="logout.php" class="logout"> Logout</a>
 </div>
 

@@ -1,19 +1,16 @@
 
 <?php
-session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-if (!isset($_SESSION['login'])) {
-    header("Location: login.php");
-    exit;
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
-include "database.php";
+require_once "database.php";
+require_once "auth.php";
 
-$role = $_SESSION['role'] ?? '';
-
-if ($role != 'admin') {
-    die("Akses ditolak.");
-}
+hanyaRole(['admin']);
 
 $error = "";
 $tampil_form = isset($_GET['tambah']);
@@ -178,7 +175,6 @@ if (isset($_POST['simpan'])) {
     }
 }
 
-
 /* =========================
    HAPUS GURU
 ========================= */
@@ -279,14 +275,12 @@ if (isset($_GET['hapus'])) {
     }
 }
 
-
 /* =========================
    PENCARIAN
 ========================= */
 
 $search = trim($_GET['cari'] ?? '');
 $cari = "%$search%";
-
 
 /* =========================
    PAGINATION
@@ -295,7 +289,6 @@ $cari = "%$search%";
 $per_halaman = 10;
 
 $halaman = max(1, (int)($_GET['halaman'] ?? 1));
-
 
 /* =========================
    HITUNG DATA
@@ -334,7 +327,6 @@ if ($halaman > $total_halaman) {
 }
 
 $mulai = ($halaman - 1) * $per_halaman;
-
 
 /* =========================
    AMBIL DATA GURU
@@ -531,10 +523,10 @@ body {
 <div class="sidebar">
 
     <div class="sidebar-title">
-        ⚖ Pelanggaran<br>Siswa
+         Pelanggaran<br>Siswa
     </div>
 
-    <a href="dashboard.php"> Dashboard</a>
+    <a href="dashboard.php">Dashboard</a>
     <a href="kelola_siswa.php">Data Siswa</a>
     <a href="kelola_guru.php" class="active">Data Guru</a>
     <a href="kelola_kelas.php">Data Kelas</a>
@@ -543,14 +535,12 @@ body {
     <a href="penempatan_siswa.php">Penempatan Siswa</a>
     <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
     <a href="pelanggaran.php">Data Pelanggaran</a>
-    <a href="tindakan.php">Data Tindakan</a>
     <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">ℹ About Me</a>
+    <a href="about_me.php">About Me</a>
 
     <a href="logout.php" class="logout">Logout</a>
 
 </div>
-
 
 <!-- CONTENT -->
 
@@ -570,7 +560,6 @@ body {
         </div>
     </div>
 
-
     <!-- PESAN ERROR -->
 
     <?php if ($error != '') { ?>
@@ -580,7 +569,6 @@ body {
         </div>
 
     <?php } ?>
-
 
     <!-- FORM TAMBAH -->
 
@@ -686,7 +674,6 @@ body {
 
     <?php } ?>
 
-
     <!-- DAFTAR GURU -->
 
     <div class="card">
@@ -709,7 +696,6 @@ body {
                 <?php } ?>
 
             </div>
-
 
             <!-- PENCARIAN -->
 
@@ -747,7 +733,6 @@ body {
                 </div>
 
             </form>
-
 
             <!-- TABEL GURU -->
 
@@ -837,7 +822,6 @@ body {
 
             </div>
 
-
             <!-- INFORMASI DATA -->
 
             <div class="text-muted small">
@@ -851,7 +835,6 @@ body {
                 data guru.
 
             </div>
-
 
             <!-- PAGINATION -->
 
@@ -874,7 +857,6 @@ body {
 
                         <?php } ?>
 
-
                         <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
 
                             <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
@@ -889,7 +871,6 @@ body {
                             </li>
 
                         <?php } ?>
-
 
                         <?php if ($halaman < $total_halaman) { ?>
 

@@ -24,6 +24,7 @@ $jenis_pesan = "";
 
 /* =========================
    PROSES SIMPAN PELANGGARAN
+   DAN TINDAKAN SEKALIGUS
 ========================= */
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -42,9 +43,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tanggal = trim($_POST['tanggal'] ?? '');
         $keterangan = trim($_POST['keterangan'] ?? '');
 
+        // Data tindakan
+        $isi_tindakan = trim($_POST['tindakan'] ?? '');
+        $catatan_tindakan = trim($_POST['catatan_tindakan'] ?? '');
+
         if ($siswa_id <= 0 || $jenis_id <= 0 || $tanggal === '') {
 
-            $pesan = "Semua data wajib diisi.";
+            $pesan = "Siswa, jenis pelanggaran, dan tanggal wajib diisi.";
             $jenis_pesan = "danger";
 
         } elseif (
@@ -105,8 +110,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $email = $_SESSION['email'] ?? '';
 
                     if ($email === '') {
+
                         $pesan = "Email akun guru tidak ditemukan dalam sesi.";
                         $jenis_pesan = "danger";
+
                     } else {
 
                         $stmt = $koneksi->prepare(
@@ -129,48 +136,114 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $stmt->close();
 
                         if ($guru_id === null) {
-                            $pesan = "Email akun guru belum terdaftar pada data guru. Periksa email di tabel users dan guru.";
+                            $pesan = "Email akun guru belum terdaftar pada data guru.";
                             $jenis_pesan = "danger";
                         }
                     }
                 }
 
-                // SIMPAN PELANGGARAN
+                // SIMPAN PELANGGARAN DAN TINDAKAN
                 if ($jenis_pesan !== "danger") {
 
-                    $stmt = $koneksi->prepare(
-                        "INSERT INTO pelanggaran
-                        (siswa_id, jenis_id, guru_id, tanggal, keterangan)
-                        VALUES (?, ?, ?, ?, ?)"
-                    );
+                    $koneksi->begin_transaction();
 
-                    if (!$stmt) {
-                        die("Query simpan gagal: " . $koneksi->error);
-                    }
+                    try {
 
-                    $stmt->bind_param(
-                        "iiiss",
-                        $siswa_id,
-                        $jenis_id,
-                        $guru_id,
-                        $tanggal,
-                        $keterangan
-                    );
+                        // SIMPAN DATA PELANGGARAN
+                        $stmt = $koneksi->prepare(
+                            "INSERT INTO pelanggaran
+                            (siswa_id, jenis_id, guru_id, tanggal, keterangan)
+                            VALUES (?, ?, ?, ?, ?)"
+                        );
 
-                    if ($stmt->execute()) {
+                        if (!$stmt) {
+                            throw new Exception(
+                                "Query simpan pelanggaran gagal: " . $koneksi->error
+                            );
+                        }
 
-                        $pesan = "Data pelanggaran berhasil disimpan.";
+                        $stmt->bind_param(
+                            "iiiss",
+                            $siswa_id,
+                            $jenis_id,
+                            $guru_id,
+                            $tanggal,
+                            $keterangan
+                        );
+
+                        if (!$stmt->execute()) {
+                            throw new Exception(
+                                "Gagal menyimpan pelanggaran: " . $stmt->error
+                            );
+                        }
+
+                        // AMBIL ID PELANGGARAN YANG BARU DISIMPAN
+                        $pelanggaran_id = $koneksi->insert_id;
+
+                        $stmt->close();
+
+                        // SIMPAN TINDAKAN JIKA DIISI
+                        if ($isi_tindakan !== '') {
+
+                            // ID USER YANG SEDANG LOGIN
+                            $petugas_id = (int)(
+                                $_SESSION['user_id'] ?? $_SESSION['id'] ?? 0
+                            );
+
+                            if ($petugas_id <= 0) {
+                                $petugas_id = null;
+                            }
+
+                            $stmt = $koneksi->prepare(
+                                "INSERT INTO tindakan
+                                (pelanggaran_id, tanggal, tindakan, petugas_id, catatan)
+                                VALUES (?, ?, ?, ?, ?)"
+                            );
+
+                            if (!$stmt) {
+                                throw new Exception(
+                                    "Query simpan tindakan gagal: " . $koneksi->error
+                                );
+                            }
+
+                            $stmt->bind_param(
+                                "issis",
+                                $pelanggaran_id,
+                                $tanggal,
+                                $isi_tindakan,
+                                $petugas_id,
+                                $catatan_tindakan
+                            );
+
+                            if (!$stmt->execute()) {
+                                throw new Exception(
+                                    "Gagal menyimpan tindakan: " . $stmt->error
+                                );
+                            }
+
+                            $stmt->close();
+                        }
+
+                        // JIKA SEMUA BERHASIL
+                        $koneksi->commit();
+
+                        if ($isi_tindakan !== '') {
+                            $pesan = "Data pelanggaran dan tindakan berhasil disimpan.";
+                        } else {
+                            $pesan = "Data pelanggaran berhasil disimpan. Belum ada tindakan yang ditambahkan.";
+                        }
+
                         $jenis_pesan = "success";
 
                         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
-                    } else {
+                    } catch (Exception $e) {
 
-                        $pesan = "Gagal menyimpan data: " . $stmt->error;
+                        $koneksi->rollback();
+
+                        $pesan = $e->getMessage();
                         $jenis_pesan = "danger";
                     }
-
-                    $stmt->close();
                 }
             }
         }
@@ -287,9 +360,9 @@ if (!$query_jenis) {
         }
 
         .main-box {
-           padding: 20px;
-           width: 100%;
-       }
+            padding: 20px;
+            width: 100%;
+        }
 
         .form-label {
             font-weight: 600;
@@ -299,6 +372,12 @@ if (!$query_jenis) {
         .form-control,
         .form-select {
             font-size: 14px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 15px;
         }
 
         @media (max-width: 700px) {
@@ -322,14 +401,14 @@ if (!$query_jenis) {
 <div class="sidebar">
 
     <div class="sidebar-title">
-        ⚖ Pelanggaran<br>
+        Pelanggaran<br>
         Siswa
     </div>
 
     <nav class="nav flex-column">
 
         <a href="dashboard.php" class="nav-link">
-             Dashboard
+            Dashboard
         </a>
 
         <?php if ($role === 'admin'): ?>
@@ -371,7 +450,7 @@ if (!$query_jenis) {
         <?php endif; ?>
 
         <a href="logout.php" class="nav-link logout">
-             Logout
+            Logout
         </a>
 
     </nav>
@@ -392,7 +471,7 @@ if (!$query_jenis) {
         <h5 class="mb-2">Form Catat Pelanggaran</h5>
 
         <p class="text-secondary small mb-4">
-            Silakan isi data pelanggaran siswa dengan benar.
+            Isi data pelanggaran dan tindakan yang diberikan kepada siswa.
         </p>
 
         <?php if ($pesan !== ''): ?>
@@ -410,6 +489,8 @@ if (!$query_jenis) {
                 name="csrf_token"
                 value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>"
             >
+
+            <div class="section-title">Data Pelanggaran</div>
 
             <div class="mb-3">
                 <label class="form-label">Pilih Siswa</label>
@@ -453,13 +534,43 @@ if (!$query_jenis) {
             </div>
 
             <div class="mb-3">
-                <label class="form-label">Keterangan</label>
+                <label class="form-label">Keterangan Pelanggaran</label>
 
                 <textarea
                     name="keterangan"
                     class="form-control"
-                    rows="4"
+                    rows="3"
                     placeholder="Masukkan keterangan pelanggaran..."
+                ></textarea>
+            </div>
+
+            <hr class="my-4">
+
+            <div class="section-title">Tindakan yang Diberikan</div>
+
+            <div class="mb-3">
+                <label class="form-label">Tindakan</label>
+
+                <textarea
+                    name="tindakan"
+                    class="form-control"
+                    rows="3"
+                    placeholder="Contoh: Teguran lisan, pembinaan, pemanggilan orang tua..."
+                ></textarea>
+
+                <small class="text-secondary">
+                    Boleh dikosongkan jika tindakan belum diberikan.
+                </small>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label">Catatan Tindakan</label>
+
+                <textarea
+                    name="catatan_tindakan"
+                    class="form-control"
+                    rows="3"
+                    placeholder="Masukkan catatan tambahan jika ada..."
                 ></textarea>
             </div>
 
@@ -480,3 +591,4 @@ if (!$query_jenis) {
 
 </body>
 </html>
+

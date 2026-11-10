@@ -1,4 +1,3 @@
-
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -318,7 +317,7 @@ body {
 
 <div class="sidebar">
 
-    <div class="sidebar-title">⚖ Pelanggaran<br>Siswa</div>
+    <div class="sidebar-title"> Pelanggaran<br>Siswa</div>
 
     <a href="dashboard.php">Dashboard</a>
 
@@ -337,8 +336,6 @@ body {
     <a href="kelola_pelanggaran_kategori.php" class="active">Kategori Pelanggaran</a>
 
     <a href="pelanggaran.php">Data Pelanggaran</a>
-
-    <a href="tindakan.php">Data Tindakan</a>
 
     <a href="laporan.php">Laporan</a>
 
