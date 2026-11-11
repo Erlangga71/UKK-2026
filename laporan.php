@@ -10,7 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-hanyaRole(['admin', 'wali_kelas']);
+hanyaRole(['admin', 'guru', 'wali_kelas']);
 
 $role = $_SESSION['role'] ?? '';
 $error = '';
@@ -48,7 +48,7 @@ if ($role === 'wali_kelas') {
         INNER JOIN wali_kelas wk
             ON wk.guru_id = COALESCE(u.guru_id, g.id)
         INNER JOIN tahun_ajaran ta
-            ON wk.tahun_ajaran_id = ta.id
+            ON ta.id = wk.tahun_ajaran_id
         WHERE u.email = ?
           AND u.role = 'wali_kelas'
           AND u.aktif = 1
@@ -75,18 +75,96 @@ if ($role === 'wali_kelas') {
     $kelas_wali_id = (int)$data_wali['kelas_id'];
     $tahun_aktif_id = (int)$data_wali['tahun_ajaran_id'];
 
-    $where[] = "
-        EXISTS (
-            SELECT 1
-            FROM penempatan_siswa ps_wali
-            WHERE ps_wali.siswa_id = s.id
-              AND ps_wali.kelas_id = ?
-              AND ps_wali.tahun_ajaran_id = ?
-        )
+    $join_penempatan = "
+        INNER JOIN penempatan_siswa ps
+            ON ps.siswa_id = s.id
+            AND ps.kelas_id = ?
+            AND ps.tahun_ajaran_id = ?
     ";
 
     $parameter[] = $kelas_wali_id;
     $parameter[] = $tahun_aktif_id;
+    $tipe .= "ii";
+
+} else {
+
+    // ADMIN DAN GURU MENGGUNAKAN PENEMPATAN TERBARU SISWA.
+    $join_penempatan = "
+        LEFT JOIN penempatan_siswa ps
+            ON ps.siswa_id = s.id
+            AND ps.id = (
+                SELECT ps2.id
+                FROM penempatan_siswa ps2
+                WHERE ps2.siswa_id = s.id
+                ORDER BY ps2.tahun_ajaran_id DESC, ps2.id DESC
+                LIMIT 1
+            )
+    ";
+}
+
+// =====================================
+// BATAS AKSES GURU
+// GURU MELIHAT PELANGGARAN YANG:
+// 1. DICATAT OLEH DIRINYA SENDIRI.
+// 2. TINDAKANNYA DIPROSES OLEH DIRINYA.
+// =====================================
+if ($role === 'guru') {
+
+    $email = $_SESSION['email'] ?? '';
+
+    if ($email === '') {
+        die("Akses ditolak. Email akun Guru tidak ditemukan.");
+    }
+
+    $stmt_guru = mysqli_prepare($koneksi, "
+        SELECT
+            u.id AS user_id,
+            COALESCE(u.guru_id, g.id) AS guru_id
+        FROM users u
+        LEFT JOIN guru g
+            ON g.id = u.guru_id
+            OR (u.guru_id IS NULL AND g.email = u.email)
+        WHERE u.email = ?
+          AND u.role = 'guru'
+          AND u.aktif = 1
+        LIMIT 1
+    ");
+
+    if (!$stmt_guru) {
+        die("Gagal mengambil data Guru: " . mysqli_error($koneksi));
+    }
+
+    mysqli_stmt_bind_param($stmt_guru, "s", $email);
+    mysqli_stmt_execute($stmt_guru);
+
+    $hasil_guru = mysqli_stmt_get_result($stmt_guru);
+    $data_guru = mysqli_fetch_assoc($hasil_guru);
+
+    mysqli_stmt_close($stmt_guru);
+
+    if (
+        !$data_guru ||
+        empty($data_guru['guru_id']) ||
+        empty($data_guru['user_id'])
+    ) {
+        die("Akses ditolak. Data akun Guru tidak ditemukan atau belum terhubung dengan data Guru.");
+    }
+
+    $guru_id = (int)$data_guru['guru_id'];
+    $user_id = (int)$data_guru['user_id'];
+
+    $where[] = "(
+        p.guru_id = ?
+        OR EXISTS (
+            SELECT 1
+            FROM tindakan t
+            WHERE t.pelanggaran_id = p.id
+              AND t.petugas_id = ?
+        )
+    )";
+
+    $parameter[] = $guru_id;
+    $parameter[] = $user_id;
     $tipe .= "ii";
 }
 
@@ -134,6 +212,9 @@ if ($cari !== '') {
     $tipe .= "sss";
 }
 
+// =====================================
+// FILTER TANGGAL
+// =====================================
 if ($tanggal_awal !== '') {
     $where[] = "p.tanggal >= ?";
     $parameter[] = $tanggal_awal;
@@ -151,32 +232,6 @@ $where_sql = !empty($where)
     : "";
 
 // =====================================
-// PENEMPATAN SISWA
-// =====================================
-if ($role === 'wali_kelas') {
-
-    $join_penempatan = "
-        LEFT JOIN penempatan_siswa ps
-            ON ps.siswa_id = s.id
-            AND ps.tahun_ajaran_id = {$tahun_aktif_id}
-    ";
-
-} else {
-
-    $join_penempatan = "
-        LEFT JOIN penempatan_siswa ps
-            ON ps.siswa_id = s.id
-            AND ps.id = (
-                SELECT ps2.id
-                FROM penempatan_siswa ps2
-                WHERE ps2.siswa_id = s.id
-                ORDER BY ps2.tahun_ajaran_id DESC, ps2.id DESC
-                LIMIT 1
-            )
-    ";
-}
-
-// =====================================
 // QUERY LAPORAN
 // =====================================
 $sql = "
@@ -189,19 +244,25 @@ $sql = "
         p.tanggal,
         p.status
     FROM pelanggaran p
+
     INNER JOIN siswa s
         ON p.siswa_id = s.id
+
     $join_penempatan
+
     LEFT JOIN kelas k
         ON ps.kelas_id = k.id
+
     INNER JOIN jenis_pelanggaran jp
         ON p.jenis_id = jp.id
+
     $where_sql
+
     ORDER BY p.tanggal DESC, p.id DESC
 ";
 
 // =====================================
-// AMBIL SEMUA DATA LAPORAN
+// AMBIL DATA LAPORAN
 // =====================================
 $data_laporan = [];
 

@@ -55,6 +55,12 @@ if (!function_exists('menuAktif')) {
 
             <a href="tindakan.php" class="nav-link <?= menuAktif('tindakan', $menu_aktif); ?>">Tindakan</a>
 
+            <a href="laporan.php" class="nav-link <?= menuAktif('laporan', $menu_aktif); ?>">Laporan</a>
+
+            <a href="riwayat.php" class="nav-link <?= menuAktif('riwayat', $menu_aktif); ?>">Riwayat</a>
+
+            <a href="rekap_poin.php" class="nav-link <?= menuAktif('rekap_poin', $menu_aktif); ?>">Rekap Poin</a>
+
         <?php elseif ($role === 'wali_kelas'): ?>
 
             <a href="catat_pelanggaran.php" class="nav-link <?= menuAktif('catat_pelanggaran', $menu_aktif); ?>">Catat Pelanggaran</a>

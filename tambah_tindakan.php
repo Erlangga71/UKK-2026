@@ -34,6 +34,51 @@ if (!$pelanggaran_id || $pelanggaran_id < 1) {
 }
 
 // =====================================
+// AMBIL PETUGAS BERDASARKAN AKUN LOGIN
+// =====================================
+$email_login = $_SESSION['email'] ?? '';
+$id_login = (int)($_SESSION['id'] ?? 0);
+
+if ($email_login === '' || $id_login < 1) {
+    die("Data akun login tidak lengkap. Silakan login kembali.");
+}
+
+$stmt_akun = mysqli_prepare($koneksi, "
+    SELECT id, nama, email, role
+    FROM users
+    WHERE id = ?
+      AND email = ?
+      AND role = ?
+      AND aktif = 1
+    LIMIT 1
+");
+
+if (!$stmt_akun) {
+    die("Gagal menyiapkan data petugas: " . mysqli_error($koneksi));
+}
+
+mysqli_stmt_bind_param(
+    $stmt_akun,
+    "iss",
+    $id_login,
+    $email_login,
+    $role
+);
+
+mysqli_stmt_execute($stmt_akun);
+
+$hasil_akun = mysqli_stmt_get_result($stmt_akun);
+$data_petugas = mysqli_fetch_assoc($hasil_akun);
+
+mysqli_stmt_close($stmt_akun);
+
+if (!$data_petugas) {
+    die("Akun petugas tidak ditemukan atau tidak aktif. Silakan login kembali.");
+}
+
+$petugas_id = (int)$data_petugas['id'];
+
+// =====================================
 // FUNGSI MENGECEK KELAS WALI KELAS
 // =====================================
 function ambilDataWali($koneksi)
@@ -191,16 +236,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tindakan = trim($_POST['tindakan'] ?? '');
     $catatan = trim($_POST['catatan'] ?? '');
 
-    $petugas_id = filter_input(
-        INPUT_POST,
-        'petugas_id',
-        FILTER_VALIDATE_INT
-    );
-
-    if ($petugas_id === false || $petugas_id === null || $petugas_id < 1) {
-        $petugas_id = null;
-    }
-
     if ($tanggal === '' || $tindakan === '') {
 
         $pesan = "Tanggal dan tindakan wajib diisi.";
@@ -219,6 +254,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             try {
 
+                // Cek ulang akun petugas yang sedang login.
+                $stmt_validasi = mysqli_prepare($koneksi, "
+                    SELECT id
+                    FROM users
+                    WHERE id = ?
+                      AND email = ?
+                      AND role = ?
+                      AND aktif = 1
+                    LIMIT 1
+                ");
+
+                mysqli_stmt_bind_param(
+                    $stmt_validasi,
+                    "iss",
+                    $petugas_id,
+                    $email_login,
+                    $role
+                );
+
+                mysqli_stmt_execute($stmt_validasi);
+
+                $hasil_validasi = mysqli_stmt_get_result($stmt_validasi);
+                $akun_valid = mysqli_fetch_assoc($hasil_validasi);
+
+                mysqli_stmt_close($stmt_validasi);
+
+                if (!$akun_valid) {
+                    throw new Exception(
+                        "Akun petugas tidak valid atau sudah tidak aktif."
+                    );
+                }
+
                 // Cek ulang kewenangan Wali Kelas.
                 if ($role === 'wali_kelas') {
 
@@ -234,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $tahun_aktif_id = (int)$data_wali['tahun_ajaran_id'];
                 }
 
-                // Kunci data pelanggaran dan pastikan masih tercatat.
+                // Pastikan pelanggaran masih boleh diproses.
                 $data_cek = ambilPelanggaran(
                     $koneksi,
                     $pelanggaran_id,
@@ -249,6 +316,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
                 }
 
+                // Kunci data pelanggaran.
                 $stmt_kunci = mysqli_prepare($koneksi, "
                     SELECT id
                     FROM pelanggaran
@@ -303,38 +371,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
                 }
 
-                // Validasi petugas jika dipilih.
-                if ($petugas_id !== null) {
-
-                    $stmt_petugas = mysqli_prepare($koneksi, "
-                        SELECT id
-                        FROM users
-                        WHERE id = ?
-                          AND aktif = 1
-                        LIMIT 1
-                    ");
-
-                    mysqli_stmt_bind_param(
-                        $stmt_petugas,
-                        "i",
-                        $petugas_id
-                    );
-
-                    mysqli_stmt_execute($stmt_petugas);
-
-                    $hasil_petugas = mysqli_stmt_get_result($stmt_petugas);
-                    $data_petugas = mysqli_fetch_assoc($hasil_petugas);
-
-                    mysqli_stmt_close($stmt_petugas);
-
-                    if (!$data_petugas) {
-                        throw new Exception(
-                            "Petugas tidak ditemukan atau tidak aktif."
-                        );
-                    }
-                }
-
-                // Simpan tindakan.
+                // Simpan tindakan dengan petugas otomatis dari akun login.
                 $stmt_simpan = mysqli_prepare($koneksi, "
                     INSERT INTO tindakan
                     (
@@ -379,9 +416,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pelanggaran_id
                 );
 
-                if (!mysqli_stmt_execute($stmt_update) ||
-                    mysqli_stmt_affected_rows($stmt_update) !== 1) {
-
+                if (
+                    !mysqli_stmt_execute($stmt_update) ||
+                    mysqli_stmt_affected_rows($stmt_update) !== 1
+                ) {
                     throw new Exception(
                         "Status pelanggaran gagal diperbarui."
                     );
@@ -402,23 +440,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
-}
-
-// =====================================
-// DATA PETUGAS
-// =====================================
-$petugas = mysqli_query(
-    $koneksi,
-    "
-    SELECT id, nama, email, role
-    FROM users
-    WHERE aktif = 1
-    ORDER BY nama ASC
-    "
-);
-
-if (!$petugas) {
-    die("Query petugas gagal: " . mysqli_error($koneksi));
 }
 ?>
 
@@ -510,7 +531,6 @@ label {
     margin-bottom: 7px;
 }
 
-select,
 input,
 textarea {
     width: 100%;
@@ -523,6 +543,15 @@ textarea {
 
 textarea {
     resize: vertical;
+}
+
+.petugas-info {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background: #f4f6f8;
+    line-height: 1.7;
 }
 
 .btn {
@@ -613,23 +642,11 @@ textarea {
             <div class="form-group">
                 <label>Petugas</label>
 
-                <select name="petugas_id">
-                    <option value="">-- Pilih Petugas --</option>
-
-                    <?php while ($u = mysqli_fetch_assoc($petugas)) { ?>
-                        <option
-                            value="<?= (int)$u['id']; ?>"
-                            <?= (isset($_POST['petugas_id']) &&
-                                (int)$_POST['petugas_id'] === (int)$u['id'])
-                                ? 'selected' : ''; ?>
-                        >
-                            <?= htmlspecialchars($u['nama']); ?>
-                            - <?= htmlspecialchars($u['email']); ?>
-                            - <?= htmlspecialchars($u['role']); ?>
-                        </option>
-                    <?php } ?>
-
-                </select>
+                <div class="petugas-info">
+                    <strong><?= htmlspecialchars($data_petugas['nama']); ?></strong><br>
+                    <?= htmlspecialchars($data_petugas['email']); ?><br>
+                    <?= htmlspecialchars($data_petugas['role']); ?>
+                </div>
             </div>
 
             <div class="form-group">

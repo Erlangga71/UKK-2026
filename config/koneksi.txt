@@ -1,0 +1,44 @@
+
+<?php
+
+// =====================================
+// PENGATURAN WAKTU WIB
+// =====================================
+date_default_timezone_set('Asia/Jakarta');
+
+// =====================================
+// KONFIGURASI DATABASE
+// =====================================
+$host = "localhost";
+$username = "root";
+$password = "";
+$database = "ukk_2026";
+
+// =====================================
+// KONEKSI MYSQL
+// =====================================
+$koneksi = mysqli_connect(
+    $host,
+    $username,
+    $password,
+    $database
+);
+
+// =====================================
+// CEK KONEKSI
+// =====================================
+if (!$koneksi) {
+    die("Koneksi database gagal: " . mysqli_connect_error());
+}
+
+// =====================================
+// PENGATURAN WAKTU MYSQL
+// =====================================
+mysqli_query($koneksi, "SET time_zone = '+07:00'");
+
+// =====================================
+// PENGATURAN KARAKTER
+// =====================================
+mysqli_set_charset($koneksi, "utf8mb4");
+
+?>

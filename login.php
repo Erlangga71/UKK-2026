@@ -96,7 +96,7 @@ if (isset($_POST['login'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Login | Sistem Pelanggaran Siswa</title>
+    <title>Login | Sistem Informasi Pelanggaran Siswa</title>
 
     <style>
 
@@ -108,96 +108,138 @@ if (isset($_POST['login'])) {
             margin: 0;
             min-height: 100vh;
             font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #123c50, #176b80, #234c70);
+            background: #edf2f7;
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 20px;
+            padding: 25px;
         }
 
         .login-container {
             width: 100%;
-            max-width: 420px;
-        }
-
-        .login-box {
-            background: white;
-            padding: 38px 35px;
-            border-radius: 12px;
-            box-shadow: 0 12px 35px rgba(0, 0, 0, 0.2);
-        }
-
-        .logo {
-            width: 65px;
-            height: 65px;
-            background: #e5f2f5;
-            color: #176b80;
-            border-radius: 50%;
+            max-width: 950px;
+            min-height: 540px;
             display: flex;
-            align-items: center;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 15px 45px rgba(30, 50, 70, 0.12);
+        }
+
+        /* PANEL KIRI */
+
+        .panel-kiri {
+            width: 45%;
+            background: linear-gradient(145deg, #173b59, #176b80);
+            padding: 55px 40px;
+            color: white;
+            display: flex;
+            flex-direction: column;
             justify-content: center;
-            font-size: 30px;
-            margin: 0 auto 18px;
         }
 
-        h1 {
-            text-align: center;
-            font-size: 23px;
-            margin: 0 0 10px;
-            color: #263746;
+        .label-sistem {
+            display: inline-block;
+            width: fit-content;
+            padding: 8px 13px;
+            border: 1px solid rgba(255,255,255,0.35);
+            border-radius: 20px;
+            font-size: 12px;
+            letter-spacing: 1px;
+            margin-bottom: 25px;
         }
 
-        .deskripsi {
-            text-align: center;
-            color: #777;
-            font-size: 13px;
-            line-height: 1.6;
-            margin-bottom: 28px;
+        .panel-kiri h1 {
+            font-size: 32px;
+            line-height: 1.35;
+            margin: 0 0 18px;
         }
 
-        .garis {
-            width: 45px;
-            height: 3px;
-            background: #176b80;
-            margin: 0 auto 25px;
+        .panel-kiri p {
+            color: #e0edf3;
+            font-size: 14px;
+            line-height: 1.8;
+            margin: 0;
+        }
+
+        .garis-panel {
+            width: 55px;
+            height: 4px;
+            background: #a8d8e5;
             border-radius: 5px;
+            margin: 28px 0;
+        }
+
+        .informasi-panel {
+            font-size: 13px;
+            line-height: 1.8;
+            color: #e0edf3;
+        }
+
+        /* PANEL KANAN */
+
+        .panel-kanan {
+            width: 55%;
+            padding: 55px 55px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .judul-login {
+            margin-bottom: 30px;
+        }
+
+        .judul-login h2 {
+            color: #203448;
+            font-size: 27px;
+            margin: 0 0 10px;
+        }
+
+        .judul-login p {
+            color: #7b8794;
+            font-size: 14px;
+            margin: 0;
+            line-height: 1.6;
         }
 
         .error {
-            background: #fce8e8;
-            border: 1px solid #f5bcbc;
+            background: #fff0f0;
+            border: 1px solid #f1b9b9;
             color: #a32222;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 18px;
+            padding: 12px 14px;
+            border-radius: 7px;
+            margin-bottom: 20px;
             font-size: 13px;
         }
 
         .form-group {
-            margin-bottom: 18px;
+            margin-bottom: 21px;
         }
 
         label {
             display: block;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: bold;
             color: #344054;
-            margin-bottom: 8px;
+            margin-bottom: 9px;
         }
 
         input {
             width: 100%;
-            padding: 13px;
-            border: 1px solid #d0d5dd;
-            border-radius: 6px;
+            padding: 14px 15px;
+            border: 1px solid #d6dde5;
+            border-radius: 7px;
             font-size: 14px;
             outline: none;
             transition: 0.2s;
+            background: #fbfcfe;
         }
 
         input:focus {
             border-color: #176b80;
-            box-shadow: 0 0 0 3px rgba(23, 107, 128, 0.12);
+            background: white;
+            box-shadow: 0 0 0 3px rgba(23, 107, 128, 0.10);
         }
 
         .password-wrapper {
@@ -205,7 +247,7 @@ if (isset($_POST['login'])) {
         }
 
         .password-wrapper input {
-            padding-right: 65px;
+            padding-right: 75px;
         }
 
         .lihat-password {
@@ -220,17 +262,16 @@ if (isset($_POST['login'])) {
             font-size: 12px;
             font-weight: bold;
             padding: 5px;
-            width: auto;
         }
 
         .btn-login {
             width: 100%;
-            padding: 13px;
+            padding: 14px;
             border: none;
-            border-radius: 6px;
+            border-radius: 7px;
             background: #176b80;
             color: white;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: bold;
             cursor: pointer;
             margin-top: 8px;
@@ -239,27 +280,56 @@ if (isset($_POST['login'])) {
 
         .btn-login:hover {
             background: #105466;
-            transform: translateY(-1px);
+            box-shadow: 0 5px 15px rgba(23, 107, 128, 0.2);
         }
 
         .footer {
             text-align: center;
-            color: #888;
-            font-size: 12px;
-            margin-top: 25px;
-            line-height: 1.6;
+            color: #98a2b3;
+            font-size: 11px;
+            margin-top: 35px;
+            line-height: 1.7;
         }
 
-        @media (max-width: 480px) {
+        /* RESPONSIVE */
 
-            .login-box {
-                padding: 30px 23px;
+        @media (max-width: 700px) {
+
+            body {
+                padding: 15px;
             }
 
-            h1 {
-                font-size: 21px;
+            .login-container {
+                max-width: 440px;
+                flex-direction: column;
             }
 
+            .panel-kiri {
+                width: 100%;
+                padding: 30px 25px;
+            }
+
+            .panel-kiri h1 {
+                font-size: 25px;
+            }
+
+            .panel-kiri p {
+                font-size: 13px;
+            }
+
+            .garis-panel,
+            .informasi-panel {
+                display: none;
+            }
+
+            .panel-kanan {
+                width: 100%;
+                padding: 35px 25px;
+            }
+
+            .judul-login h2 {
+                font-size: 24px;
+            }
         }
 
     </style>
@@ -268,110 +338,142 @@ if (isset($_POST['login'])) {
 
 <body>
 
-<div class="login-container">
+    <div class="login-container">
 
-    <div class="login-box">
+        <!-- PANEL KIRI -->
 
-        <div class="logo">
-            ⚖
-        </div>
+        <div class="panel-kiri">
 
-        <h1>Selamat Datang</h1>
-
-        <div class="deskripsi">
-            Sistem Informasi<br>
-            Pelanggaran Siswa
-        </div>
-
-        <div class="garis"></div>
-
-        <?php if ($pesan != "") { ?>
-
-            <div class="error">
-                <?= htmlspecialchars($pesan); ?>
+            <div class="label-sistem">
+                SISTEM INFORMASI SEKOLAH
             </div>
 
-        <?php } ?>
+            <h1>
+                Pelanggaran<br>
+                Siswa
+            </h1>
 
-        <form method="POST">
+            <p>
+                Sistem Informasi Pelanggaran Siswa merupakan
+                sistem untuk membantu sekolah dalam mencatat,
+                mengelola, dan memantau pelanggaran siswa
+                secara terstruktur.
+            </p>
 
-            <div class="form-group">
+            <div class="garis-panel"></div>
 
-                <label>Email</label>
+            <div class="informasi-panel">
+                Pengelolaan data pelanggaran siswa,
+                pencatatan tindakan, dan penyajian laporan
+                dalam satu sistem.
+            </div>
 
-                <input
-                    type="email"
-                    name="email"
-                    placeholder="Masukkan email Anda"
-                    value="<?= htmlspecialchars($_POST['email'] ?? ''); ?>"
-                    required
-                >
+        </div>
+
+        <!-- PANEL KANAN -->
+
+        <div class="panel-kanan">
+
+            <div class="judul-login">
+
+                <h2>Selamat Datang</h2>
+
+                <p>
+                    Silakan masuk menggunakan email dan password
+                    akun Anda untuk melanjutkan.
+                </p>
 
             </div>
 
-            <div class="form-group">
+            <?php if ($pesan != "") { ?>
 
-                <label>Password</label>
+                <div class="error">
+                    <?= htmlspecialchars($pesan); ?>
+                </div>
 
-                <div class="password-wrapper">
+            <?php } ?>
+
+            <form method="POST">
+
+                <div class="form-group">
+
+                    <label>Email</label>
 
                     <input
-                        type="password"
-                        name="password"
-                        id="password"
-                        placeholder="Masukkan password"
+                        type="email"
+                        name="email"
+                        placeholder="Masukkan email Anda"
+                        value="<?= htmlspecialchars($_POST['email'] ?? ''); ?>"
+                        autocomplete="username"
                         required
                     >
 
-                    <button
-                        type="button"
-                        class="lihat-password"
-                        onclick="togglePassword()"
-                    >
-                        Lihat
-                    </button>
+                </div>
+
+                <div class="form-group">
+
+                    <label>Password</label>
+
+                    <div class="password-wrapper">
+
+                        <input
+                            type="password"
+                            name="password"
+                            id="password"
+                            placeholder="Masukkan password"
+                            autocomplete="current-password"
+                            required
+                        >
+
+                        <button
+                            type="button"
+                            class="lihat-password"
+                            onclick="togglePassword()"
+                        >
+                            Lihat
+                        </button>
+
+                    </div>
 
                 </div>
 
+                <button
+                    type="submit"
+                    name="login"
+                    class="btn-login"
+                >
+                    MASUK KE SISTEM
+                </button>
+
+            </form>
+
+            <div class="footer">
+                Sistem Informasi Pelanggaran Siswa<br>
+                © 2026 UKK - Semua Hak Dilindungi
             </div>
 
-            <button
-                type="submit"
-                name="login"
-                class="btn-login"
-            >
-                LOGIN
-            </button>
-
-        </form>
-
-        <div class="footer">
-            Sistem Informasi Pelanggaran Siswa<br>
-            © 2026 UKK - Semua Hak Dilindungi
         </div>
 
     </div>
 
-</div>
+    <script>
 
-<script>
+        function togglePassword() {
 
-function togglePassword() {
+            const password = document.getElementById("password");
+            const tombol = document.querySelector(".lihat-password");
 
-    const password = document.getElementById("password");
-    const tombol = document.querySelector(".lihat-password");
+            if (password.type === "password") {
+                password.type = "text";
+                tombol.innerText = "Sembunyi";
+            } else {
+                password.type = "password";
+                tombol.innerText = "Lihat";
+            }
 
-    if (password.type === "password") {
-        password.type = "text";
-        tombol.innerText = "Sembunyi";
-    } else {
-        password.type = "password";
-        tombol.innerText = "Lihat";
-    }
+        }
 
-}
-
-</script>
+    </script>
 
 </body>
 </html>

@@ -10,7 +10,6 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-// ADMIN, GURU, DAN WALI KELAS BOLEH MENGAKSES
 hanyaRole(['admin', 'guru', 'wali_kelas']);
 
 $role = $_SESSION['role'] ?? '';
@@ -45,7 +44,7 @@ $nama_tahun = "";
 
 if ($query_tahun && mysqli_num_rows($query_tahun) > 0) {
     $data_tahun = mysqli_fetch_assoc($query_tahun);
-    $tahun_ajaran_id = (int) $data_tahun['id'];
+    $tahun_ajaran_id = (int)$data_tahun['id'];
     $nama_tahun = $data_tahun['nama'];
 }
 
@@ -55,7 +54,6 @@ if ($query_tahun && mysqli_num_rows($query_tahun) > 0) {
 
 if ($role === 'guru' || $role === 'wali_kelas') {
 
-    // Cari guru_id dari akun users.
     $stmt = $koneksi->prepare(
         "SELECT guru_id
          FROM users
@@ -69,11 +67,12 @@ if ($role === 'guru' || $role === 'wali_kelas') {
 
     $stmt->bind_param("s", $email);
     $stmt->execute();
+
     $hasil = $stmt->get_result();
 
     if ($hasil && $hasil->num_rows > 0) {
         $data = $hasil->fetch_assoc();
-        $guru_id = (int) ($data['guru_id'] ?? 0);
+        $guru_id = (int)($data['guru_id'] ?? 0);
     }
 
     $stmt->close();
@@ -94,11 +93,12 @@ if ($role === 'guru' || $role === 'wali_kelas') {
 
         $stmt->bind_param("s", $email);
         $stmt->execute();
+
         $hasil = $stmt->get_result();
 
         if ($hasil && $hasil->num_rows > 0) {
             $data = $hasil->fetch_assoc();
-            $guru_id = (int) $data['id'];
+            $guru_id = (int)$data['id'];
         }
 
         $stmt->close();
@@ -139,11 +139,12 @@ if ($role === 'wali_kelas') {
     );
 
     $stmt->execute();
+
     $hasil = $stmt->get_result();
 
     if ($hasil && $hasil->num_rows > 0) {
         $data = $hasil->fetch_assoc();
-        $kelas_id = (int) $data['kelas_id'];
+        $kelas_id = (int)$data['kelas_id'];
         $nama_kelas = $data['nama_kelas'];
     }
 
@@ -170,219 +171,159 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     } else {
 
-        $siswa_id = (int) ($_POST['siswa_id'] ?? 0);
-        $jenis_id = (int) ($_POST['jenis_id'] ?? 0);
+        $siswa_id = (int)($_POST['siswa_id'] ?? 0);
+        $jenis_id = (int)($_POST['jenis_id'] ?? 0);
         $tanggal = trim($_POST['tanggal'] ?? '');
         $keterangan = trim($_POST['keterangan'] ?? '');
-
-        $isi_tindakan = trim($_POST['tindakan'] ?? '');
-        $catatan_tindakan = trim($_POST['catatan_tindakan'] ?? '');
 
         if ($siswa_id <= 0 || $jenis_id <= 0 || $tanggal === '') {
 
             $pesan = "Siswa, jenis pelanggaran, dan tanggal wajib diisi.";
             $jenis_pesan = "danger";
 
-        } elseif (
-            !DateTime::createFromFormat('Y-m-d', $tanggal) ||
-            DateTime::createFromFormat('Y-m-d', $tanggal)->format('Y-m-d') !== $tanggal
-        ) {
-
-            $pesan = "Format tanggal tidak valid.";
-            $jenis_pesan = "danger";
-
         } else {
 
-            /* CEK SISWA */
+            $tanggal_obj = DateTime::createFromFormat('Y-m-d', $tanggal);
 
-            if ($role === 'wali_kelas') {
+            if (
+                !$tanggal_obj ||
+                $tanggal_obj->format('Y-m-d') !== $tanggal
+            ) {
 
-                $stmt = $koneksi->prepare(
-                    "SELECT s.id
-                     FROM siswa s
-                     JOIN penempatan_siswa ps
-                        ON ps.siswa_id = s.id
-                     WHERE s.id = ?
-                       AND s.aktif = 1
-                       AND ps.kelas_id = ?
-                       AND ps.tahun_ajaran_id = ?
-                     LIMIT 1"
-                );
-
-                if (!$stmt) {
-                    die("Query siswa gagal: " . $koneksi->error);
-                }
-
-                $stmt->bind_param(
-                    "iii",
-                    $siswa_id,
-                    $kelas_id,
-                    $tahun_ajaran_id
-                );
-
-            } else {
-
-                $stmt = $koneksi->prepare(
-                    "SELECT id
-                     FROM siswa
-                     WHERE id = ?
-                       AND aktif = 1
-                     LIMIT 1"
-                );
-
-                if (!$stmt) {
-                    die("Query siswa gagal: " . $koneksi->error);
-                }
-
-                $stmt->bind_param("i", $siswa_id);
-            }
-
-            $stmt->execute();
-            $cek_siswa = $stmt->get_result();
-            $stmt->close();
-
-            /* CEK JENIS PELANGGARAN */
-
-            $stmt = $koneksi->prepare(
-                "SELECT id
-                 FROM jenis_pelanggaran
-                 WHERE id = ?
-                 LIMIT 1"
-            );
-
-            if (!$stmt) {
-                die("Query jenis pelanggaran gagal: " . $koneksi->error);
-            }
-
-            $stmt->bind_param("i", $jenis_id);
-            $stmt->execute();
-            $cek_jenis = $stmt->get_result();
-            $stmt->close();
-
-            if ($cek_siswa->num_rows === 0) {
-
-                $pesan = "Siswa tidak ditemukan, tidak aktif, atau bukan siswa kelas Anda.";
-                $jenis_pesan = "danger";
-
-            } elseif ($cek_jenis->num_rows === 0) {
-
-                $pesan = "Jenis pelanggaran tidak ditemukan.";
+                $pesan = "Format tanggal tidak valid.";
                 $jenis_pesan = "danger";
 
             } else {
 
-                $koneksi->begin_transaction();
+                /* CEK SISWA */
 
-                try {
-
-                    /* SIMPAN PELANGGARAN */
+                if ($role === 'wali_kelas') {
 
                     $stmt = $koneksi->prepare(
-                        "INSERT INTO pelanggaran
-                        (siswa_id, jenis_id, guru_id, tanggal, keterangan)
-                        VALUES (?, ?, ?, ?, ?)"
+                        "SELECT s.id
+                         FROM siswa s
+                         JOIN penempatan_siswa ps
+                            ON ps.siswa_id = s.id
+                         WHERE s.id = ?
+                           AND s.aktif = 1
+                           AND ps.kelas_id = ?
+                           AND ps.tahun_ajaran_id = ?
+                         LIMIT 1"
                     );
 
                     if (!$stmt) {
-                        throw new Exception(
-                            "Query simpan pelanggaran gagal: " . $koneksi->error
-                        );
+                        die("Query siswa gagal: " . $koneksi->error);
                     }
 
                     $stmt->bind_param(
-                        "iiiss",
+                        "iii",
                         $siswa_id,
-                        $jenis_id,
-                        $guru_id,
-                        $tanggal,
-                        $keterangan
+                        $kelas_id,
+                        $tahun_ajaran_id
                     );
 
-                    if (!$stmt->execute()) {
-                        throw new Exception(
-                            "Gagal menyimpan pelanggaran: " . $stmt->error
-                        );
+                } else {
+
+                    $stmt = $koneksi->prepare(
+                        "SELECT id
+                         FROM siswa
+                         WHERE id = ?
+                           AND aktif = 1
+                         LIMIT 1"
+                    );
+
+                    if (!$stmt) {
+                        die("Query siswa gagal: " . $koneksi->error);
                     }
 
-                    $pelanggaran_id = $koneksi->insert_id;
+                    $stmt->bind_param("i", $siswa_id);
+                }
 
-                    $stmt->close();
+                $stmt->execute();
+                $cek_siswa = $stmt->get_result();
+                $stmt->close();
 
-                    /* SIMPAN TINDAKAN JIKA DIISI */
+                /* CEK JENIS PELANGGARAN */
 
-                    if ($isi_tindakan !== '') {
+                $stmt = $koneksi->prepare(
+                    "SELECT id
+                     FROM jenis_pelanggaran
+                     WHERE id = ?
+                     LIMIT 1"
+                );
 
-                        // Cari ID akun petugas berdasarkan email login.
-                        $petugas_id = null;
+                if (!$stmt) {
+                    die("Query jenis pelanggaran gagal: " . $koneksi->error);
+                }
+
+                $stmt->bind_param("i", $jenis_id);
+                $stmt->execute();
+
+                $cek_jenis = $stmt->get_result();
+
+                $stmt->close();
+
+                if ($cek_siswa->num_rows === 0) {
+
+                    $pesan = "Siswa tidak ditemukan, tidak aktif, atau bukan siswa kelas Anda.";
+                    $jenis_pesan = "danger";
+
+                } elseif ($cek_jenis->num_rows === 0) {
+
+                    $pesan = "Jenis pelanggaran tidak ditemukan.";
+                    $jenis_pesan = "danger";
+
+                } else {
+
+                    $koneksi->begin_transaction();
+
+                    try {
+
+                        /* SIMPAN PELANGGARAN */
 
                         $stmt = $koneksi->prepare(
-                            "SELECT id
-                             FROM users
-                             WHERE email = ?
-                             LIMIT 1"
-                        );
-
-                        if ($stmt) {
-                            $stmt->bind_param("s", $email);
-                            $stmt->execute();
-                            $hasil_petugas = $stmt->get_result();
-
-                            if ($hasil_petugas && $hasil_petugas->num_rows > 0) {
-                                $data_petugas = $hasil_petugas->fetch_assoc();
-                                $petugas_id = (int) $data_petugas['id'];
-                            }
-
-                            $stmt->close();
-                        }
-
-                        $stmt = $koneksi->prepare(
-                            "INSERT INTO tindakan
-                            (pelanggaran_id, tanggal, tindakan, petugas_id, catatan)
+                            "INSERT INTO pelanggaran
+                            (siswa_id, jenis_id, guru_id, tanggal, keterangan)
                             VALUES (?, ?, ?, ?, ?)"
                         );
 
                         if (!$stmt) {
                             throw new Exception(
-                                "Query simpan tindakan gagal: " . $koneksi->error
+                                "Query simpan pelanggaran gagal: " . $koneksi->error
                             );
                         }
 
                         $stmt->bind_param(
-                            "issis",
-                            $pelanggaran_id,
+                            "iiiss",
+                            $siswa_id,
+                            $jenis_id,
+                            $guru_id,
                             $tanggal,
-                            $isi_tindakan,
-                            $petugas_id,
-                            $catatan_tindakan
+                            $keterangan
                         );
 
                         if (!$stmt->execute()) {
                             throw new Exception(
-                                "Gagal menyimpan tindakan: " . $stmt->error
+                                "Gagal menyimpan pelanggaran: " . $stmt->error
                             );
                         }
 
                         $stmt->close();
-                    }
 
-                    $koneksi->commit();
+                        $koneksi->commit();
 
-                    if ($isi_tindakan !== '') {
-                        $pesan = "Data pelanggaran dan tindakan berhasil disimpan.";
-                    } else {
                         $pesan = "Data pelanggaran berhasil disimpan.";
+                        $jenis_pesan = "success";
+
+                        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
+                    } catch (Exception $e) {
+
+                        $koneksi->rollback();
+
+                        $pesan = $e->getMessage();
+                        $jenis_pesan = "danger";
                     }
-
-                    $jenis_pesan = "success";
-
-                    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-
-                } catch (Exception $e) {
-
-                    $koneksi->rollback();
-
-                    $pesan = $e->getMessage();
-                    $jenis_pesan = "danger";
                 }
             }
         }
@@ -393,9 +334,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    AMBIL DATA SISWA
 ========================= */
 
+$daftar_siswa = [];
+
 if ($role === 'wali_kelas') {
 
-    $stmt = $koneksi->prepare(
+    $stmt_siswa = $koneksi->prepare(
         "SELECT DISTINCT s.id, s.nis, s.nama
          FROM siswa s
          JOIN penempatan_siswa ps
@@ -406,22 +349,23 @@ if ($role === 'wali_kelas') {
          ORDER BY s.nama ASC"
     );
 
-    if (!$stmt) {
+    if (!$stmt_siswa) {
         die("Gagal mengambil data siswa: " . $koneksi->error);
     }
 
-    $stmt->bind_param(
+    $stmt_siswa->bind_param(
         "ii",
         $kelas_id,
         $tahun_ajaran_id
     );
 
-    $stmt->execute();
-    $query_siswa = $stmt->get_result();
+    $stmt_siswa->execute();
+
+    $hasil_siswa = $stmt_siswa->get_result();
 
 } else {
 
-    $query_siswa = mysqli_query(
+    $hasil_siswa = mysqli_query(
         $koneksi,
         "SELECT id, nis, nama
          FROM siswa
@@ -429,9 +373,22 @@ if ($role === 'wali_kelas') {
          ORDER BY nama ASC"
     );
 
-    if (!$query_siswa) {
+    if (!$hasil_siswa) {
         die("Gagal mengambil data siswa: " . mysqli_error($koneksi));
     }
+}
+
+// Simpan hasil query ke array agar bisa digunakan oleh JavaScript.
+while ($siswa = $hasil_siswa->fetch_assoc()) {
+    $daftar_siswa[] = [
+        'id' => (int)$siswa['id'],
+        'nis' => (string)$siswa['nis'],
+        'nama' => (string)$siswa['nama']
+    ];
+}
+
+if (isset($stmt_siswa)) {
+    $stmt_siswa->close();
 }
 
 /* =========================
@@ -464,6 +421,9 @@ if (!$query_jenis) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <style>
+        * {
+            box-sizing: border-box;
+        }
 
         body {
             margin: 0;
@@ -518,6 +478,7 @@ if (!$query_jenis) {
         .content {
             margin-left: 220px;
             padding: 30px;
+            min-height: 100vh;
         }
 
         .header-box,
@@ -553,6 +514,51 @@ if (!$query_jenis) {
             margin-bottom: 15px;
         }
 
+        /* PENCARIAN SISWA */
+
+        .hasil-pencarian {
+            display: none;
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+            background: white;
+            margin-top: 5px;
+        }
+
+        .hasil-pencarian button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: white;
+            border: none;
+            border-bottom: 1px solid #eee;
+            padding: 10px 12px;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .hasil-pencarian button:hover {
+            background: #f0f2f4;
+        }
+
+        .hasil-pencarian .tidak-ada {
+            padding: 12px;
+            color: #777;
+            font-size: 13px;
+        }
+
+        .info-siswa {
+            display: none;
+            margin-top: 8px;
+            padding: 9px 12px;
+            background: #eaf5ed;
+            border: 1px solid #c8e6cf;
+            border-radius: 5px;
+            color: #276738;
+            font-size: 13px;
+        }
+
         @media (max-width: 700px) {
             .sidebar {
                 position: relative;
@@ -565,66 +571,16 @@ if (!$query_jenis) {
                 padding: 15px;
             }
         }
-
     </style>
 
 </head>
 
 <body>
 
-<!-- SIDEBAR -->
-
-<div class="sidebar">
-
-    <div class="sidebar-title">
-        Pelanggaran<br>Siswa
-    </div>
-
-    <nav class="nav flex-column">
-
-        <a href="dashboard.php" class="nav-link">
-            Dashboard
-        </a>
-
-        <?php if ($role === 'admin') { ?>
-
-            <a href="kelola_siswa.php" class="nav-link">Data Siswa</a>
-            <a href="kelola_guru.php" class="nav-link">Data Guru</a>
-            <a href="kelola_kelas.php" class="nav-link">Data Kelas</a>
-            <a href="kelola_tahun_ajaran.php" class="nav-link">Tahun Ajaran</a>
-            <a href="kelola_wali_kelas.php" class="nav-link">Wali Kelas</a>
-            <a href="penempatan_siswa.php" class="nav-link">Penempatan Siswa</a>
-            <a href="kelola_pelanggaran_kategori.php" class="nav-link">Kategori Pelanggaran</a>
-            <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
-            <a href="laporan.php" class="nav-link">Laporan</a>
-            <a href="about_me.php" class="nav-link">About Me</a>
-
-        <?php } elseif ($role === 'guru') { ?>
-
-            <a href="catat_pelanggaran.php" class="nav-link active">Catat Pelanggaran</a>
-            <a href="tindakan.php" class="nav-link">Tindakan</a>
-            <a href="riwayat.php" class="nav-link">Riwayat</a>
-            <a href="rekap_poin.php" class="nav-link">Rekap Poin</a>
-
-        <?php } elseif ($role === 'wali_kelas') { ?>
-
-            <a href="catat_pelanggaran.php" class="nav-link active">Catat Pelanggaran</a>
-            <a href="tindakan.php" class="nav-link">Tindakan</a>
-            <a href="riwayat.php" class="nav-link">Riwayat</a>
-            <a href="rekap_poin.php" class="nav-link">Rekap Poin</a>
-            <a href="laporan.php" class="nav-link">Laporan</a>
-
-        <?php } ?>
-
-        <a href="logout.php" class="nav-link logout">
-            Logout
-        </a>
-
-    </nav>
-
-</div>
-
-<!-- KONTEN -->
+<?php
+$menu_aktif = 'catat_pelanggaran';
+require_once "sidebar.php";
+?>
 
 <div class="content">
 
@@ -637,15 +593,18 @@ if (!$query_jenis) {
         </p>
 
         <small>
-            Login sebagai: <strong><?= htmlspecialchars($nama); ?></strong>
+            Login sebagai:
+            <strong><?= htmlspecialchars($nama); ?></strong>
             (<?= htmlspecialchars($role); ?>)
         </small>
 
         <?php if ($role === 'wali_kelas') { ?>
             <br>
             <small>
-                Kelas: <strong><?= htmlspecialchars($nama_kelas); ?></strong>
-                | Tahun Ajaran: <strong><?= htmlspecialchars($nama_tahun); ?></strong>
+                Kelas:
+                <strong><?= htmlspecialchars($nama_kelas); ?></strong>
+                | Tahun Ajaran:
+                <strong><?= htmlspecialchars($nama_tahun); ?></strong>
             </small>
         <?php } ?>
 
@@ -656,7 +615,7 @@ if (!$query_jenis) {
         <h5 class="mb-2">Form Catat Pelanggaran</h5>
 
         <p class="text-secondary small mb-4">
-            Isi data pelanggaran dan tindakan yang diberikan kepada siswa.
+            Isi data pelanggaran siswa. Pemberian tindakan dilakukan melalui menu Tindakan.
         </p>
 
         <?php if ($pesan !== '') { ?>
@@ -665,7 +624,11 @@ if (!$query_jenis) {
 
                 <?= htmlspecialchars($pesan); ?>
 
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="alert"
+                ></button>
 
             </div>
 
@@ -683,42 +646,57 @@ if (!$query_jenis) {
                 Data Pelanggaran
             </div>
 
+            <!-- PENCARIAN SISWA -->
+
             <div class="mb-3">
 
-                <label class="form-label">Pilih Siswa</label>
+                <label class="form-label">
+                    Cari Siswa
+                </label>
 
-                <select name="siswa_id" class="form-select" required>
+                <input
+                    type="search"
+                    id="cari_siswa"
+                    class="form-control"
+                    placeholder="Ketik nama siswa atau NIS..."
+                    autocomplete="off"
+                >
 
-                    <option value="">-- Pilih Siswa --</option>
+                <div class="form-text">
+                    Cari berdasarkan nama atau NIS, lalu pilih siswa dari hasil pencarian.
+                </div>
 
-                    <?php while ($siswa = $query_siswa->fetch_assoc()) { ?>
+                <div id="hasil_pencarian" class="hasil-pencarian"></div>
 
-                        <option value="<?= (int) $siswa['id']; ?>">
+                <input
+                    type="hidden"
+                    name="siswa_id"
+                    id="siswa_id"
+                    required
+                >
 
-                            <?= htmlspecialchars($siswa['nis'] . " - " . $siswa['nama']); ?>
-
-                        </option>
-
-                    <?php } ?>
-
-                </select>
+                <div id="info_siswa" class="info-siswa"></div>
 
             </div>
 
             <div class="mb-3">
 
-                <label class="form-label">Jenis Pelanggaran</label>
+                <label class="form-label">
+                    Jenis Pelanggaran
+                </label>
 
                 <select name="jenis_id" class="form-select" required>
 
-                    <option value="">-- Pilih Pelanggaran --</option>
+                    <option value="">
+                        -- Pilih Pelanggaran --
+                    </option>
 
                     <?php while ($jenis = mysqli_fetch_assoc($query_jenis)) { ?>
 
-                        <option value="<?= (int) $jenis['id']; ?>">
+                        <option value="<?= (int)$jenis['id']; ?>">
 
                             <?= htmlspecialchars($jenis['nama']); ?>
-                            (<?= (int) $jenis['poin']; ?> poin)
+                            (<?= (int)$jenis['poin']; ?> poin)
 
                         </option>
 
@@ -730,7 +708,9 @@ if (!$query_jenis) {
 
             <div class="mb-3">
 
-                <label class="form-label">Tanggal Pelanggaran</label>
+                <label class="form-label">
+                    Tanggal Pelanggaran
+                </label>
 
                 <input
                     type="date"
@@ -742,51 +722,17 @@ if (!$query_jenis) {
 
             </div>
 
-            <div class="mb-3">
+            <div class="mb-4">
 
-                <label class="form-label">Keterangan Pelanggaran</label>
+                <label class="form-label">
+                    Keterangan Pelanggaran
+                </label>
 
                 <textarea
                     name="keterangan"
                     class="form-control"
                     rows="3"
                     placeholder="Masukkan keterangan pelanggaran..."
-                ></textarea>
-
-            </div>
-
-            <hr class="my-4">
-
-            <div class="section-title">
-                Tindakan yang Diberikan
-            </div>
-
-            <div class="mb-3">
-
-                <label class="form-label">Tindakan</label>
-
-                <textarea
-                    name="tindakan"
-                    class="form-control"
-                    rows="3"
-                    placeholder="Contoh: Teguran lisan, pembinaan, pemanggilan orang tua..."
-                ></textarea>
-
-                <small class="text-secondary">
-                    Boleh dikosongkan jika tindakan belum diberikan.
-                </small>
-
-            </div>
-
-            <div class="mb-4">
-
-                <label class="form-label">Catatan Tindakan</label>
-
-                <textarea
-                    name="catatan_tindakan"
-                    class="form-control"
-                    rows="3"
-                    placeholder="Masukkan catatan tambahan jika ada..."
                 ></textarea>
 
             </div>
@@ -804,6 +750,121 @@ if (!$query_jenis) {
     </div>
 
 </div>
+
+<script>
+    // Data siswa dari database.
+    const daftarSiswa = <?= json_encode(
+        $daftar_siswa,
+        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+    ); ?>;
+
+    const inputCari = document.getElementById('cari_siswa');
+    const inputSiswaId = document.getElementById('siswa_id');
+    const hasilPencarian = document.getElementById('hasil_pencarian');
+    const infoSiswa = document.getElementById('info_siswa');
+
+    function tampilkanHasil(kataKunci = '') {
+
+        const kata = kataKunci.trim().toLowerCase();
+
+        const hasil = daftarSiswa.filter(function(siswa) {
+
+            const nama = siswa.nama.toLowerCase();
+            const nis = siswa.nis.toLowerCase();
+
+            return nama.includes(kata) || nis.includes(kata);
+        });
+
+        hasilPencarian.innerHTML = '';
+        hasilPencarian.style.display = 'block';
+
+        if (hasil.length === 0) {
+
+            const pesan = document.createElement('div');
+            pesan.className = 'tidak-ada';
+            pesan.textContent = 'Data siswa tidak ditemukan.';
+
+            hasilPencarian.appendChild(pesan);
+            return;
+        }
+
+        const maksimalHasil = 50;
+
+        hasil.slice(0, maksimalHasil).forEach(function(siswa) {
+
+            const tombol = document.createElement('button');
+            tombol.type = 'button';
+
+            tombol.textContent = siswa.nis + ' - ' + siswa.nama;
+
+            tombol.addEventListener('click', function() {
+
+                inputSiswaId.value = siswa.id;
+                inputCari.value = siswa.nis + ' - ' + siswa.nama;
+
+                infoSiswa.textContent =
+                    'Siswa dipilih: ' + siswa.nama + ' (NIS: ' + siswa.nis + ')';
+
+                infoSiswa.style.display = 'block';
+                hasilPencarian.style.display = 'none';
+
+            });
+
+            hasilPencarian.appendChild(tombol);
+        });
+
+        if (hasil.length > maksimalHasil) {
+
+            const info = document.createElement('div');
+            info.className = 'tidak-ada';
+            info.textContent =
+                'Menampilkan 50 hasil pertama. Perjelas pencarian untuk hasil lainnya.';
+
+            hasilPencarian.appendChild(info);
+        }
+    }
+
+    // Tampilkan hasil ketika pengguna mengetik.
+    inputCari.addEventListener('input', function() {
+
+        inputSiswaId.value = '';
+        infoSiswa.style.display = 'none';
+
+        tampilkanHasil(this.value);
+    });
+
+    // Tampilkan daftar siswa ketika kolom pencarian diklik.
+    inputCari.addEventListener('focus', function() {
+
+        if (inputSiswaId.value === '') {
+            tampilkanHasil(this.value);
+        }
+    });
+
+    // Sembunyikan hasil ketika pengguna mengklik area lain.
+    document.addEventListener('click', function(event) {
+
+        if (
+            !inputCari.contains(event.target) &&
+            !hasilPencarian.contains(event.target)
+        ) {
+            hasilPencarian.style.display = 'none';
+        }
+    });
+
+    // Pastikan siswa sudah dipilih sebelum form dikirim.
+    document.querySelector('form').addEventListener('submit', function(event) {
+
+        if (!inputSiswaId.value) {
+
+            event.preventDefault();
+
+            alert('Silakan cari dan pilih siswa terlebih dahulu.');
+
+            inputCari.focus();
+        }
+    });
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 

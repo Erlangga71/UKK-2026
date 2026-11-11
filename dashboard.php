@@ -1,4 +1,3 @@
-
 <?php
 
 error_reporting(E_ALL);
@@ -8,8 +7,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once "database.php";
-require_once "auth.php";
+require_once __DIR__ . "/database.php";
+require_once __DIR__ . "/auth.php";
 
 hanyaRole(['admin', 'guru', 'wali_kelas']);
 
@@ -504,7 +503,7 @@ if ($role === 'wali_kelas') {
 
 <?php
 $menu_aktif = 'dashboard';
-require_once "sidebar.php";
+require_once __DIR__ . "/sidebar.php";
 ?>
 
 <!-- KONTEN -->
