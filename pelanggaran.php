@@ -16,19 +16,21 @@ $role = $_SESSION['role'] ?? '';
 $nama = $_SESSION['nama'] ?? 'Pengguna';
 $email = $_SESSION['email'] ?? '';
 
-function bindParams($stmt, $types, &$params) {
-    if (empty($params)) {
-        return;
+if (!function_exists('bindParams')) {
+    function bindParams($stmt, $types, &$params) {
+        if (empty($params)) {
+            return;
+        }
+
+        $refs = [];
+        $refs[] = &$types;
+
+        foreach ($params as $key => &$value) {
+            $refs[] = &$value;
+        }
+
+        call_user_func_array([$stmt, 'bind_param'], $refs);
     }
-
-    $refs = [];
-    $refs[] = &$types;
-
-    foreach ($params as $key => &$value) {
-        $refs[] = &$value;
-    }
-
-    call_user_func_array([$stmt, 'bind_param'], $refs);
 }
 
 /* =========================
@@ -129,7 +131,7 @@ if ($role === 'wali_kelas') {
          FROM wali_kelas w
          JOIN kelas k ON w.kelas_id = k.id
          WHERE w.guru_id = ?
-           AND w.tahun_ajaran_id = ?
+         AND w.tahun_ajaran_id = ?
          LIMIT 1"
     );
 
@@ -154,43 +156,45 @@ if ($role === 'wali_kelas') {
    CEK AKSES SISWA
 ========================= */
 
-function siswaBolehDiakses(
-    $koneksi,
-    $role,
-    $siswa_id,
-    $kelas_wali_id,
-    $tahun_aktif_id
-) {
-    if ($role === 'admin') {
+if (!function_exists('siswaBolehDiakses')) {
+    function siswaBolehDiakses(
+        $koneksi,
+        $role,
+        $siswa_id,
+        $kelas_wali_id,
+        $tahun_aktif_id
+    ) {
+        if ($role === 'admin') {
+            return true;
+        }
+
+        if ($role === 'wali_kelas') {
+
+            $stmt = $koneksi->prepare(
+                "SELECT id
+                 FROM penempatan_siswa
+                 WHERE siswa_id = ?
+                 AND kelas_id = ?
+                 AND tahun_ajaran_id = ?
+                 LIMIT 1"
+            );
+
+            $stmt->bind_param(
+                "iii",
+                $siswa_id,
+                $kelas_wali_id,
+                $tahun_aktif_id
+            );
+
+            $stmt->execute();
+            $hasil = $stmt->get_result()->num_rows > 0;
+            $stmt->close();
+
+            return $hasil;
+        }
+
         return true;
     }
-
-    if ($role === 'wali_kelas') {
-
-        $stmt = $koneksi->prepare(
-            "SELECT id
-             FROM penempatan_siswa
-             WHERE siswa_id = ?
-               AND kelas_id = ?
-               AND tahun_ajaran_id = ?
-             LIMIT 1"
-        );
-
-        $stmt->bind_param(
-            "iii",
-            $siswa_id,
-            $kelas_wali_id,
-            $tahun_aktif_id
-        );
-
-        $stmt->execute();
-        $hasil = $stmt->get_result()->num_rows > 0;
-        $stmt->close();
-
-        return $hasil;
-    }
-
-    return true;
 }
 
 /* =========================
@@ -320,8 +324,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan'])) {
 
                 $stmt = $koneksi->prepare(
                     "INSERT INTO pelanggaran
-                    (siswa_id, jenis_id, guru_id, tanggal, keterangan, status)
-                    VALUES (?, ?, ?, ?, ?, ?)"
+                     (siswa_id, jenis_id, guru_id, tanggal, keterangan, status)
+                     VALUES (?, ?, ?, ?, ?, ?)"
                 );
 
                 if (!$stmt) {
@@ -395,8 +399,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hapus'])) {
                         SELECT 1
                         FROM penempatan_siswa ps
                         WHERE ps.siswa_id = p.siswa_id
-                          AND ps.kelas_id = ?
-                          AND ps.tahun_ajaran_id = ?
+                        AND ps.kelas_id = ?
+                        AND ps.tahun_ajaran_id = ?
                     )";
 
                 $types_hapus .= "ii";
@@ -456,8 +460,8 @@ if ($role === 'wali_kelas') {
          FROM siswa s
          JOIN penempatan_siswa ps ON ps.siswa_id = s.id
          WHERE s.aktif = 1
-           AND ps.kelas_id = ?
-           AND ps.tahun_ajaran_id = ?
+         AND ps.kelas_id = ?
+         AND ps.tahun_ajaran_id = ?
          ORDER BY s.nama ASC"
     );
 
@@ -565,8 +569,8 @@ if ($role === 'guru') {
             SELECT 1
             FROM penempatan_siswa ps
             WHERE ps.siswa_id = p.siswa_id
-              AND ps.kelas_id = ?
-              AND ps.tahun_ajaran_id = ?
+            AND ps.kelas_id = ?
+            AND ps.tahun_ajaran_id = ?
         )";
 
     $params[] = $kelas_wali_id;
@@ -826,47 +830,12 @@ body {
 
 <body>
 
-<div class="sidebar">
+<!-- SIDEBAR BERSAMA -->
 
-    <div class="sidebar-title">
-        Pelanggaran<br>Siswa
-    </div>
-
-    <a href="dashboard.php">Dashboard</a>
-
-    <?php if ($role === 'admin') { ?>
-
-        <a href="kelola_siswa.php">Data Siswa</a>
-        <a href="kelola_guru.php">Data Guru</a>
-        <a href="kelola_kelas.php">Data Kelas</a>
-        <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
-        <a href="kelola_wali_kelas.php">Wali Kelas</a>
-        <a href="penempatan_siswa.php">Penempatan Siswa</a>
-        <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
-        <a href="pelanggaran.php" class="active">Data Pelanggaran</a>
-        <a href="laporan.php">Laporan</a>
-        <a href="about_me.php">About Me</a>
-
-    <?php } elseif ($role === 'guru') { ?>
-
-        <a href="catat_pelanggaran.php">Catat Pelanggaran</a>
-        <a href="pelanggaran.php" class="active">Data Pelanggaran</a>
-        <a href="tindakan.php">Data Tindakan</a>
-        <a href="riwayat.php">Riwayat</a>
-        <a href="rekap_poin.php">Rekap Poin</a>
-
-    <?php } elseif ($role === 'wali_kelas') { ?>
-
-        <a href="pelanggaran.php" class="active">Data Pelanggaran</a>
-        <a href="tindakan.php">Data Tindakan</a>
-        <a href="riwayat.php">Riwayat</a>
-        <a href="rekap_poin.php">Rekap Poin</a>
-
-    <?php } ?>
-
-    <a href="logout.php" class="logout">Logout</a>
-
-</div>
+<?php
+$menu_aktif = 'pelanggaran';
+require_once "sidebar.php";
+?>
 
 <div class="content">
 
@@ -940,11 +909,9 @@ body {
                                 <?php while ($siswa = $query_siswa->fetch_assoc()) { ?>
 
                                     <option value="<?= (int)$siswa['id']; ?>">
-
                                         <?= htmlspecialchars(
                                             $siswa['nis'] . ' - ' . $siswa['nama']
                                         ); ?>
-
                                     </option>
 
                                 <?php } ?>
@@ -972,12 +939,10 @@ body {
                                 <?php while ($jenis = mysqli_fetch_assoc($query_jenis)) { ?>
 
                                     <option value="<?= (int)$jenis['id']; ?>">
-
                                         <?= htmlspecialchars($jenis['nama_kategori'] ?? '-'); ?>
                                         -
                                         <?= htmlspecialchars($jenis['nama']); ?>
                                         (<?= (int)$jenis['poin']; ?> poin)
-
                                     </option>
 
                                 <?php } ?>

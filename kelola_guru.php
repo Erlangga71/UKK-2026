@@ -13,7 +13,7 @@ require_once "auth.php";
 hanyaRole(['admin']);
 
 $error = "";
-$tampil_form = isset($_GET['tambah']);
+$tampil_form = isset($_GET['tambah']) && $_GET['tambah'] == '1';
 
 /* =========================
    TAMBAH GURU
@@ -27,149 +27,155 @@ if (isset($_POST['simpan'])) {
     $password = $_POST['password'] ?? '';
     $no_hp    = trim($_POST['no_hp'] ?? '');
 
-    if ($nama == '' || $email == '' || $password == '') {
+    $tampil_form = true;
+
+    if ($nama === '' || $email === '' || $password === '') {
 
         $error = "Nama, Gmail dan password wajib diisi.";
-        $tampil_form = true;
 
-    } elseif ($nip != '' && (!ctype_digit($nip) || strlen($nip) > 18)) {
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+
+        $error = "Format Gmail tidak valid.";
+
+    } elseif (strlen($password) < 6) {
+
+        $error = "Password minimal 6 karakter.";
+
+    } elseif ($nip !== '' && (!ctype_digit($nip) || strlen($nip) > 18)) {
 
         $error = "NIP hanya boleh angka dan maksimal 18 digit.";
-        $tampil_form = true;
 
     } else {
 
         // CEK NIP DUPLIKAT
         $nip_ada = false;
 
-        if ($nip != '') {
-            $stmt = mysqli_prepare(
+        if ($nip !== '') {
+
+            $stmt_cek = mysqli_prepare(
                 $koneksi,
                 "SELECT id FROM guru WHERE nip = ? LIMIT 1"
             );
 
-            mysqli_stmt_bind_param($stmt, "s", $nip);
-            mysqli_stmt_execute($stmt);
+            mysqli_stmt_bind_param($stmt_cek, "s", $nip);
+            mysqli_stmt_execute($stmt_cek);
 
-            $cek_nip = mysqli_stmt_get_result($stmt);
+            $cek_nip = mysqli_stmt_get_result($stmt_cek);
             $nip_ada = mysqli_num_rows($cek_nip) > 0;
 
-            mysqli_stmt_close($stmt);
+            mysqli_stmt_close($stmt_cek);
         }
+
+        // CEK EMAIL DI USERS
+        $stmt_cek = mysqli_prepare(
+            $koneksi,
+            "SELECT id FROM users
+             WHERE email = ? OR username = ?
+             LIMIT 1"
+        );
+
+        mysqli_stmt_bind_param($stmt_cek, "ss", $email, $email);
+        mysqli_stmt_execute($stmt_cek);
+
+        $cek_user = mysqli_stmt_get_result($stmt_cek);
+        $user_ada = mysqli_num_rows($cek_user) > 0;
+
+        mysqli_stmt_close($stmt_cek);
+
+        // CEK EMAIL DI GURU
+        $stmt_cek = mysqli_prepare(
+            $koneksi,
+            "SELECT id FROM guru WHERE email = ? LIMIT 1"
+        );
+
+        mysqli_stmt_bind_param($stmt_cek, "s", $email);
+        mysqli_stmt_execute($stmt_cek);
+
+        $cek_guru = mysqli_stmt_get_result($stmt_cek);
+        $guru_ada = mysqli_num_rows($cek_guru) > 0;
+
+        mysqli_stmt_close($stmt_cek);
 
         if ($nip_ada) {
 
             $error = "NIP tersebut sudah terdaftar.";
-            $tampil_form = true;
+
+        } elseif ($user_ada || $guru_ada) {
+
+            $error = "Gmail tersebut sudah digunakan.";
 
         } else {
 
-            // CEK EMAIL / USERNAME
-            $stmt = mysqli_prepare(
-                $koneksi,
-                "SELECT id FROM users
-                 WHERE email = ? OR username = ?
-                 LIMIT 1"
+            $password_hash = password_hash(
+                $password,
+                PASSWORD_DEFAULT
             );
 
-            mysqli_stmt_bind_param($stmt, "ss", $email, $email);
-            mysqli_stmt_execute($stmt);
+            mysqli_begin_transaction($koneksi);
 
-            $cek_user = mysqli_stmt_get_result($stmt);
-            $user_ada = mysqli_num_rows($cek_user) > 0;
+            try {
 
-            mysqli_stmt_close($stmt);
+                // SIMPAN DATA GURU
+                $nip_db = ($nip === '') ? null : $nip;
+                $no_hp_db = ($no_hp === '') ? null : $no_hp;
 
-            // CEK EMAIL GURU
-            $stmt = mysqli_prepare(
-                $koneksi,
-                "SELECT id FROM guru WHERE email = ? LIMIT 1"
-            );
-
-            mysqli_stmt_bind_param($stmt, "s", $email);
-            mysqli_stmt_execute($stmt);
-
-            $cek_guru = mysqli_stmt_get_result($stmt);
-            $guru_ada = mysqli_num_rows($cek_guru) > 0;
-
-            mysqli_stmt_close($stmt);
-
-            if ($user_ada || $guru_ada) {
-
-                $error = "Gmail tersebut sudah digunakan.";
-                $tampil_form = true;
-
-            } else {
-
-                $password_hash = password_hash(
-                    $password,
-                    PASSWORD_DEFAULT
+                $stmt_guru = mysqli_prepare(
+                    $koneksi,
+                    "INSERT INTO guru (nip, nama, email, no_hp)
+                     VALUES (?, ?, ?, ?)"
                 );
 
-                mysqli_begin_transaction($koneksi);
+                mysqli_stmt_bind_param(
+                    $stmt_guru,
+                    "ssss",
+                    $nip_db,
+                    $nama,
+                    $email,
+                    $no_hp_db
+                );
 
-                try {
-
-                    // BUAT AKUN LOGIN GURU
-                    $stmt_user = mysqli_prepare(
-                        $koneksi,
-                        "INSERT INTO users
-                        (nama, username, email, password, role, aktif)
-                        VALUES (?, ?, ?, ?, 'guru', 1)"
-                    );
-
-                    mysqli_stmt_bind_param(
-                        $stmt_user,
-                        "ssss",
-                        $nama,
-                        $email,
-                        $email,
-                        $password_hash
-                    );
-
-                    if (!mysqli_stmt_execute($stmt_user)) {
-                        throw new Exception(mysqli_error($koneksi));
-                    }
-
-                    mysqli_stmt_close($stmt_user);
-
-                    // SIMPAN DATA GURU
-                    $nip_db = ($nip == '') ? null : $nip;
-                    $no_hp_db = ($no_hp == '') ? null : $no_hp;
-
-                    $stmt_guru = mysqli_prepare(
-                        $koneksi,
-                        "INSERT INTO guru (nip, nama, email, no_hp)
-                         VALUES (?, ?, ?, ?)"
-                    );
-
-                    mysqli_stmt_bind_param(
-                        $stmt_guru,
-                        "ssss",
-                        $nip_db,
-                        $nama,
-                        $email,
-                        $no_hp_db
-                    );
-
-                    if (!mysqli_stmt_execute($stmt_guru)) {
-                        throw new Exception(mysqli_error($koneksi));
-                    }
-
-                    mysqli_stmt_close($stmt_guru);
-
-                    mysqli_commit($koneksi);
-
-                    header("Location: kelola_guru.php");
-                    exit;
-
-                } catch (Exception $e) {
-
-                    mysqli_rollback($koneksi);
-
-                    $error = "Gagal menyimpan data guru: " . $e->getMessage();
-                    $tampil_form = true;
+                if (!mysqli_stmt_execute($stmt_guru)) {
+                    throw new Exception(mysqli_stmt_error($stmt_guru));
                 }
+
+                $guru_id_baru = mysqli_insert_id($koneksi);
+
+                mysqli_stmt_close($stmt_guru);
+
+                // BUAT AKUN LOGIN GURU DAN HUBUNGKAN KE DATA GURU
+                $stmt_user = mysqli_prepare(
+                    $koneksi,
+                    "INSERT INTO users
+                    (nama, username, email, password, role, aktif, guru_id)
+                    VALUES (?, ?, ?, ?, 'guru', 1, ?)"
+                );
+
+                mysqli_stmt_bind_param(
+                    $stmt_user,
+                    "ssssi",
+                    $nama,
+                    $email,
+                    $email,
+                    $password_hash,
+                    $guru_id_baru
+                );
+
+                if (!mysqli_stmt_execute($stmt_user)) {
+                    throw new Exception(mysqli_stmt_error($stmt_user));
+                }
+
+                mysqli_stmt_close($stmt_user);
+
+                mysqli_commit($koneksi);
+
+                header("Location: kelola_guru.php");
+                exit;
+
+            } catch (Exception $e) {
+
+                mysqli_rollback($koneksi);
+
+                $error = "Gagal menyimpan data guru: " . $e->getMessage();
             }
         }
     }
@@ -187,7 +193,7 @@ if (isset($_GET['hapus'])) {
 
         $stmt = mysqli_prepare(
             $koneksi,
-            "SELECT email FROM guru WHERE id = ? LIMIT 1"
+            "SELECT id, email FROM guru WHERE id = ? LIMIT 1"
         );
 
         mysqli_stmt_bind_param($stmt, "i", $id);
@@ -226,38 +232,42 @@ if (isset($_GET['hapus'])) {
 
                 try {
 
+                    // HAPUS AKUN LOGIN GURU
+                    $stmt_user = mysqli_prepare(
+                        $koneksi,
+                        "DELETE FROM users
+                         WHERE guru_id = ? AND role = 'guru'"
+                    );
+
+                    mysqli_stmt_bind_param(
+                        $stmt_user,
+                        "i",
+                        $id
+                    );
+
+                    if (!mysqli_stmt_execute($stmt_user)) {
+                        throw new Exception(mysqli_stmt_error($stmt_user));
+                    }
+
+                    mysqli_stmt_close($stmt_user);
+
                     // HAPUS DATA GURU
-                    $stmt = mysqli_prepare(
+                    $stmt_guru = mysqli_prepare(
                         $koneksi,
                         "DELETE FROM guru WHERE id = ?"
                     );
 
-                    mysqli_stmt_bind_param($stmt, "i", $id);
-
-                    if (!mysqli_stmt_execute($stmt)) {
-                        throw new Exception(mysqli_error($koneksi));
-                    }
-
-                    mysqli_stmt_close($stmt);
-
-                    // HAPUS AKUN LOGIN GURU
-                    $stmt = mysqli_prepare(
-                        $koneksi,
-                        "DELETE FROM users
-                         WHERE email = ? AND role = 'guru'"
-                    );
-
                     mysqli_stmt_bind_param(
-                        $stmt,
-                        "s",
-                        $guru_hapus['email']
+                        $stmt_guru,
+                        "i",
+                        $id
                     );
 
-                    if (!mysqli_stmt_execute($stmt)) {
-                        throw new Exception(mysqli_error($koneksi));
+                    if (!mysqli_stmt_execute($stmt_guru)) {
+                        throw new Exception(mysqli_stmt_error($stmt_guru));
                     }
 
-                    mysqli_stmt_close($stmt);
+                    mysqli_stmt_close($stmt_guru);
 
                     mysqli_commit($koneksi);
 
@@ -280,7 +290,7 @@ if (isset($_GET['hapus'])) {
 ========================= */
 
 $search = trim($_GET['cari'] ?? '');
-$cari = "%$search%";
+$cari = "%{$search}%";
 
 /* =========================
    PAGINATION
@@ -294,18 +304,24 @@ $halaman = max(1, (int)($_GET['halaman'] ?? 1));
    HITUNG DATA
 ========================= */
 
-if ($search != '') {
+if ($search !== '') {
 
     $stmt = $koneksi->prepare(
         "SELECT COUNT(*) AS total
          FROM guru
          WHERE nip LIKE ?
-         OR nama LIKE ?
-         OR email LIKE ?
-         OR no_hp LIKE ?"
+            OR nama LIKE ?
+            OR email LIKE ?
+            OR no_hp LIKE ?"
     );
 
-    $stmt->bind_param("ssss", $cari, $cari, $cari, $cari);
+    $stmt->bind_param(
+        "ssss",
+        $cari,
+        $cari,
+        $cari,
+        $cari
+    );
 
 } else {
 
@@ -332,15 +348,15 @@ $mulai = ($halaman - 1) * $per_halaman;
    AMBIL DATA GURU
 ========================= */
 
-if ($search != '') {
+if ($search !== '') {
 
     $stmt = $koneksi->prepare(
         "SELECT id, nip, nama, email, no_hp
          FROM guru
          WHERE nip LIKE ?
-         OR nama LIKE ?
-         OR email LIKE ?
-         OR no_hp LIKE ?
+            OR nama LIKE ?
+            OR email LIKE ?
+            OR no_hp LIKE ?
          ORDER BY id DESC
          LIMIT ?, ?"
     );
@@ -364,7 +380,11 @@ if ($search != '') {
          LIMIT ?, ?"
     );
 
-    $stmt->bind_param("ii", $mulai, $per_halaman);
+    $stmt->bind_param(
+        "ii",
+        $mulai,
+        $per_halaman
+    );
 }
 
 $stmt->execute();
@@ -384,6 +404,10 @@ $data = $stmt->get_result();
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
+
+* {
+    box-sizing: border-box;
+}
 
 body {
     margin: 0;
@@ -520,27 +544,10 @@ body {
 
 <!-- SIDEBAR -->
 
-<div class="sidebar">
-
-    <div class="sidebar-title">
-         Pelanggaran<br>Siswa
-    </div>
-
-    <a href="dashboard.php">Dashboard</a>
-    <a href="kelola_siswa.php">Data Siswa</a>
-    <a href="kelola_guru.php" class="active">Data Guru</a>
-    <a href="kelola_kelas.php">Data Kelas</a>
-    <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
-    <a href="kelola_wali_kelas.php">Wali Kelas</a>
-    <a href="penempatan_siswa.php">Penempatan Siswa</a>
-    <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
-    <a href="pelanggaran.php">Data Pelanggaran</a>
-    <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">About Me</a>
-
-    <a href="logout.php" class="logout">Logout</a>
-
-</div>
+<?php
+$menu_aktif = 'guru';
+require_once "sidebar.php";
+?>
 
 <!-- CONTENT -->
 
@@ -549,6 +556,7 @@ body {
     <!-- HEADER -->
 
     <div class="card mb-3">
+
         <div class="card-body">
 
             <h4 class="mb-1">Data Guru</h4>
@@ -558,11 +566,12 @@ body {
             </p>
 
         </div>
+
     </div>
 
     <!-- PESAN ERROR -->
 
-    <?php if ($error != '') { ?>
+    <?php if ($error !== '') { ?>
 
         <div class="alert alert-danger">
             <?= htmlspecialchars($error); ?>
@@ -575,6 +584,7 @@ body {
     <?php if ($tampil_form) { ?>
 
         <div class="card mb-3">
+
             <div class="card-body">
 
                 <h5 class="mb-3">Tambah Data Guru</h5>
@@ -584,6 +594,7 @@ body {
                     <div class="row g-3">
 
                         <div class="col-md-6">
+
                             <label class="form-label fw-bold">NIP</label>
 
                             <input
@@ -597,9 +608,11 @@ body {
                                 title="NIP hanya boleh angka dan maksimal 18 digit."
                                 oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 18)"
                             >
+
                         </div>
 
                         <div class="col-md-6">
+
                             <label class="form-label fw-bold">Nama Guru</label>
 
                             <input
@@ -609,9 +622,11 @@ body {
                                 placeholder="Masukkan nama guru"
                                 required
                             >
+
                         </div>
 
                         <div class="col-md-6">
+
                             <label class="form-label fw-bold">Gmail</label>
 
                             <input
@@ -621,9 +636,11 @@ body {
                                 placeholder="contoh@gmail.com"
                                 required
                             >
+
                         </div>
 
                         <div class="col-md-6">
+
                             <label class="form-label fw-bold">Password Login</label>
 
                             <input
@@ -633,9 +650,11 @@ body {
                                 placeholder="Masukkan password"
                                 required
                             >
+
                         </div>
 
                         <div class="col-md-6">
+
                             <label class="form-label fw-bold">No HP</label>
 
                             <input
@@ -644,6 +663,7 @@ body {
                                 class="form-control"
                                 placeholder="Masukkan nomor HP"
                             >
+
                         </div>
 
                     </div>
@@ -670,6 +690,7 @@ body {
                 </form>
 
             </div>
+
         </div>
 
     <?php } ?>
@@ -719,7 +740,7 @@ body {
                         Cari
                     </button>
 
-                    <?php if ($search != '') { ?>
+                    <?php if ($search !== '') { ?>
 
                         <a
                             href="kelola_guru.php"
@@ -765,6 +786,7 @@ body {
                                 <td><?= $no++; ?></td>
 
                                 <td>
+
                                     <strong>
                                         <?= htmlspecialchars($row['nama']); ?>
                                     </strong>
@@ -773,6 +795,7 @@ body {
                                         NIP:
                                         <?= htmlspecialchars($row['nip'] ?? '-'); ?>
                                     </div>
+
                                 </td>
 
                                 <td>
@@ -809,9 +832,11 @@ body {
                     <?php } else { ?>
 
                         <tr>
+
                             <td colspan="5" class="text-center py-4">
                                 Belum ada data guru.
                             </td>
+
                         </tr>
 
                     <?php } ?>
@@ -847,12 +872,14 @@ body {
                         <?php if ($halaman > 1) { ?>
 
                             <li class="page-item">
+
                                 <a
                                     class="page-link"
                                     href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($search); ?>"
                                 >
                                     &laquo;
                                 </a>
+
                             </li>
 
                         <?php } ?>
@@ -875,12 +902,14 @@ body {
                         <?php if ($halaman < $total_halaman) { ?>
 
                             <li class="page-item">
+
                                 <a
                                     class="page-link"
                                     href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($search); ?>"
                                 >
                                     &raquo;
                                 </a>
+
                             </li>
 
                         <?php } ?>

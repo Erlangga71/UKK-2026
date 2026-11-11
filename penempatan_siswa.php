@@ -1,3 +1,4 @@
+
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -392,29 +393,12 @@ body {
 
 <body>
 
-<!-- SIDEBAR -->
+<!-- SIDEBAR BERSAMA -->
 
-<div class="sidebar">
-
-    <div class="sidebar-title">
-         Pelanggaran<br>Siswa
-    </div>
-
-    <a href="dashboard.php">Dashboard</a>
-    <a href="kelola_siswa.php">Data Siswa</a>
-    <a href="kelola_guru.php">Data Guru</a>
-    <a href="kelola_kelas.php">Data Kelas</a>
-    <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
-    <a href="kelola_wali_kelas.php">Wali Kelas</a>
-    <a href="penempatan_siswa.php" class="active">Penempatan Siswa</a>
-    <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
-    <a href="pelanggaran.php">Data Pelanggaran</a>
-    <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">About Me</a>
-
-    <a href="logout.php" class="logout">Logout</a>
-
-</div>
+<?php
+$menu_aktif = 'penempatan_siswa';
+require_once "sidebar.php";
+?>
 
 <!-- CONTENT -->
 

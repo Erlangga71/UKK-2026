@@ -296,8 +296,6 @@ function urlHalamanKelas($halaman, $cari) {
             color: #212529;
         }
 
-        /* SIDEBAR */
-
         .sidebar {
             position: fixed;
             top: 0;
@@ -307,6 +305,7 @@ function urlHalamanKelas($halaman, $cari) {
             background: #687280;
             padding: 20px 12px;
             overflow-y: auto;
+            z-index: 1000;
         }
 
         .sidebar-title {
@@ -317,7 +316,7 @@ function urlHalamanKelas($halaman, $cari) {
             line-height: 1.4;
         }
 
-        .sidebar a {
+        .sidebar .nav-link {
             display: block;
             padding: 11px 13px;
             margin-bottom: 5px;
@@ -327,9 +326,10 @@ function urlHalamanKelas($halaman, $cari) {
             font-size: 14px;
         }
 
-        .sidebar a:hover,
-        .sidebar a.active {
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
             background: #4f5965;
+            color: white;
         }
 
         .sidebar .logout {
@@ -340,8 +340,6 @@ function urlHalamanKelas($halaman, $cari) {
         .sidebar .logout:hover {
             background: #941d1d;
         }
-
-        /* KONTEN */
 
         .content {
             margin-left: 220px;
@@ -358,8 +356,6 @@ function urlHalamanKelas($halaman, $cari) {
             padding: 16px;
         }
 
-        /* TOMBOL */
-
         .btn-stabilo {
             background: #9dff00;
             color: #1a3300;
@@ -371,8 +367,6 @@ function urlHalamanKelas($halaman, $cari) {
             background: #86e000;
             color: #1a3300;
         }
-
-        /* TABEL */
 
         .table {
             font-size: 12px;
@@ -396,8 +390,6 @@ function urlHalamanKelas($halaman, $cari) {
             background: #f8f9fa;
         }
 
-        /* PAGINATION */
-
         .pagination .page-link {
             color: #4f5965;
         }
@@ -407,8 +399,6 @@ function urlHalamanKelas($halaman, $cari) {
             border-color: #687280;
             color: white;
         }
-
-        /* LAYAR KECIL */
 
         @media(max-width: 700px) {
 
@@ -430,29 +420,12 @@ function urlHalamanKelas($halaman, $cari) {
 
 <body>
 
-<!-- SIDEBAR -->
+<!-- SIDEBAR BERSAMA -->
 
-<div class="sidebar">
-
-    <div class="sidebar-title">
-         Pelanggaran<br>Siswa
-    </div>
-
-    <a href="dashboard.php"> Dashboard</a>
-    <a href="kelola_siswa.php">Data Siswa</a>
-    <a href="kelola_guru.php">Data Guru</a>
-    <a href="kelola_kelas.php" class="active">Data Kelas</a>
-    <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
-    <a href="kelola_wali_kelas.php">Wali Kelas</a>
-    <a href="penempatan_siswa.php">Penempatan Siswa</a>
-    <a href="kelola_pelanggaran_kategori.php"> Kategori Pelanggaran</a>
-    <a href="pelanggaran.php">Data Pelanggaran</a>
-    <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">About Me</a>
-
-    <a href="logout.php" class="logout"> Logout</a>
-
-</div>
+<?php
+$menu_aktif = 'kelas';
+require_once "sidebar.php";
+?>
 
 <!-- KONTEN -->
 

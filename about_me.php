@@ -1,3 +1,4 @@
+
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -9,7 +10,8 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-hanyaRole(['admin', 'guru']);
+// About Me hanya untuk Admin
+hanyaRole(['admin']);
 
 $role = $_SESSION['role'] ?? '';
 $nama = $_SESSION['nama'] ?? 'Pengguna';
@@ -18,14 +20,18 @@ $email = $_SESSION['email'] ?? '-';
 
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>About Me - Pelanggaran Siswa</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <style>
+
         * {
             box-sizing: border-box;
         }
@@ -38,6 +44,8 @@ $email = $_SESSION['email'] ?? '-';
             color: #212529;
         }
 
+        /* SIDEBAR */
+
         .sidebar {
             position: fixed;
             top: 0;
@@ -47,6 +55,7 @@ $email = $_SESSION['email'] ?? '-';
             background: #687280;
             padding: 20px 12px;
             overflow-y: auto;
+            z-index: 1000;
         }
 
         .sidebar-title {
@@ -81,10 +90,15 @@ $email = $_SESSION['email'] ?? '-';
             background: #941d1d;
         }
 
+        /* CONTENT */
+
         .content {
             margin-left: 220px;
             padding: 30px;
+            min-height: 100vh;
         }
+
+        /* PANEL */
 
         .panel {
             background: white;
@@ -96,6 +110,8 @@ $email = $_SESSION['email'] ?? '-';
         .panel-body {
             padding: 20px;
         }
+
+        /* TABEL INFORMASI */
 
         .info-table {
             width: 100%;
@@ -118,7 +134,10 @@ $email = $_SESSION['email'] ?? '-';
             font-weight: bold;
         }
 
+        /* RESPONSIVE */
+
         @media (max-width: 700px) {
+
             .sidebar {
                 position: relative;
                 width: 100%;
@@ -134,63 +153,77 @@ $email = $_SESSION['email'] ?? '-';
                 width: 120px;
             }
         }
+
     </style>
+
 </head>
 
 <body>
 
 <!-- SIDEBAR -->
+
 <div class="sidebar">
 
     <div class="sidebar-title">
         Pelanggaran<br>Siswa
     </div>
 
-    <?php if ($role === 'admin') { ?>
+    <a href="dashboard.php">Dashboard</a>
 
-        <a href="dashboard.php">Dashboard</a>
-        <a href="kelola_siswa.php">Data Siswa</a>
-        <a href="kelola_guru.php">Data Guru</a>
-        <a href="kelola_kelas.php">Data Kelas</a>
-        <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
-        <a href="kelola_wali_kelas.php">Wali Kelas</a>
-        <a href="penempatan_siswa.php">Penempatan Siswa</a>
-        <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
-        <a href="pelanggaran.php">Data Pelanggaran</a>
-        <a href="laporan.php">Laporan</a>
-        <a href="about_me.php" class="active">About Me</a>
+    <a href="kelola_siswa.php">Data Siswa</a>
 
-    <?php } else { ?>
+    <a href="kelola_guru.php">Data Guru</a>
 
-        <a href="dashboard.php">Dashboard</a>
-        <a href="catat_pelanggaran.php">Catat Pelanggaran</a>
-        <a href="pelanggaran.php">Data Pelanggaran</a>
-        <a href="tindakan.php">Data Tindakan</a>
-        <a href="laporan.php">Laporan</a>
-        <a href="about_me.php" class="active">About Me</a>
+    <a href="kelola_kelas.php">Data Kelas</a>
 
-    <?php } ?>
+    <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
+
+    <a href="kelola_wali_kelas.php">Wali Kelas</a>
+
+    <a href="penempatan_siswa.php">Penempatan Siswa</a>
+
+    <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
+
+    <a href="pelanggaran.php">Data Pelanggaran</a>
+
+    <a href="laporan.php">Laporan</a>
+
+    <a href="riwayat.php">Riwayat</a>
+
+    <a href="rekap_poin.php">Rekap Poin</a>
+
+    <a href="about_me.php" class="active">About Me</a>
 
     <a href="logout.php" class="logout">Logout</a>
 
 </div>
 
 <!-- CONTENT -->
+
 <div class="content">
 
     <!-- HEADER -->
+
     <div class="panel">
+
         <div class="panel-body">
+
             <h4 class="mb-1">About Me</h4>
+
             <p class="text-muted mb-0">
                 Informasi mengenai sistem dan pembuat aplikasi.
             </p>
+
         </div>
+
     </div>
 
     <!-- TENTANG SISTEM -->
+
     <div class="panel">
+
         <div class="panel-body">
+
             <h5 class="mb-3">Tentang Sistem</h5>
 
             <p>
@@ -205,19 +238,29 @@ $email = $_SESSION['email'] ?? '-';
                 dapat dilakukan dengan lebih mudah, teratur, dan
                 tersimpan dalam database.
             </p>
+
         </div>
+
     </div>
 
     <!-- INFORMASI PROJECT -->
+
     <div class="panel">
+
         <div class="panel-body">
+
             <h5 class="mb-3">Informasi Project</h5>
 
             <div class="table-responsive">
+
                 <table class="info-table">
+
                     <tr>
                         <td>Nama Sistem</td>
-                        <td>Sistem Informasi Pelanggaran Siswa SMK MUHAMMADIYAH TASIKMALAYA</td>
+                        <td>
+                            Sistem Informasi Pelanggaran Siswa
+                            SMK MUHAMMADIYAH TASIKMALAYA
+                        </td>
                     </tr>
 
                     <tr>
@@ -234,14 +277,21 @@ $email = $_SESSION['email'] ?? '-';
                         <td>Database</td>
                         <td>ukk_2026</td>
                     </tr>
+
                 </table>
+
             </div>
+
         </div>
+
     </div>
 
     <!-- PEMBUAT -->
+
     <div class="panel">
+
         <div class="panel-body">
+
             <h5 class="mb-3">Pembuat</h5>
 
             <p>
@@ -251,7 +301,9 @@ $email = $_SESSION['email'] ?? '-';
             </p>
 
             <div class="table-responsive">
+
                 <table class="info-table">
+
                     <tr>
                         <td>Nama</td>
                         <td>Erlangga Saputra Hidayat</td>
@@ -266,9 +318,13 @@ $email = $_SESSION['email'] ?? '-';
                         <td>Tahun</td>
                         <td>2026</td>
                     </tr>
+
                 </table>
+
             </div>
+
         </div>
+
     </div>
 
 </div>

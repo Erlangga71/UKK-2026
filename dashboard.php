@@ -1,4 +1,8 @@
+
 <?php
+
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -21,9 +25,9 @@ if ($role === 'admin') {
     $jabatan = 'Guru';
 }
 
-/* =====================================
+/* =========================
    TAHUN AJARAN AKTIF
-===================================== */
+========================= */
 
 $tahun_ajaran_id = 0;
 $nama_tahun_ajaran = '';
@@ -42,9 +46,9 @@ if ($query_tahun && mysqli_num_rows($query_tahun) > 0) {
     $nama_tahun_ajaran = $data_tahun['nama'];
 }
 
-/* =====================================
+/* =========================
    IDENTITAS WALI KELAS
-===================================== */
+========================= */
 
 $guru_id_login = 0;
 $kelas_id_login = 0;
@@ -103,9 +107,7 @@ if ($role === 'wali_kelas') {
 
         $stmt_kelas = mysqli_prepare(
             $koneksi,
-            "SELECT
-                wk.kelas_id,
-                k.nama_kelas
+            "SELECT wk.kelas_id, k.nama_kelas
              FROM wali_kelas wk
              JOIN kelas k ON wk.kelas_id = k.id
              WHERE wk.guru_id = ?
@@ -137,9 +139,9 @@ if ($role === 'wali_kelas') {
     }
 }
 
-/* =====================================
-   FILTER PELANGGARAN WALI KELAS
-===================================== */
+/* =========================
+   FILTER PELANGGARAN
+========================= */
 
 $filter_pelanggaran = "";
 
@@ -158,13 +160,15 @@ if ($role === 'wali_kelas') {
         ";
 
     } else {
+
         $filter_pelanggaran = " AND 1 = 0 ";
+
     }
 }
 
-/* =====================================
+/* =========================
    TOTAL SISWA AKTIF
-===================================== */
+========================= */
 
 if ($role === 'wali_kelas') {
 
@@ -182,7 +186,9 @@ if ($role === 'wali_kelas') {
         );
 
     } else {
+
         $query_siswa = false;
+
     }
 
 } else {
@@ -193,6 +199,7 @@ if ($role === 'wali_kelas') {
          FROM siswa
          WHERE aktif = 1"
     );
+
 }
 
 $total_siswa = 0;
@@ -202,9 +209,9 @@ if ($query_siswa) {
     $total_siswa = (int) $data['total'];
 }
 
-/* =====================================
+/* =========================
    TOTAL PELANGGARAN
-===================================== */
+========================= */
 
 $query_pelanggaran = mysqli_query(
     $koneksi,
@@ -221,9 +228,9 @@ if ($query_pelanggaran) {
     $total_pelanggaran = (int) $data['total'];
 }
 
-/* =====================================
+/* =========================
    PELANGGARAN BULAN INI
-===================================== */
+========================= */
 
 $query_bulan = mysqli_query(
     $koneksi,
@@ -241,9 +248,9 @@ if ($query_bulan) {
     $total_bulan = (int) $data['total'];
 }
 
-/* =====================================
+/* =========================
    SISWA BERMASALAH
-===================================== */
+========================= */
 
 $query_bermasalah = mysqli_query(
     $koneksi,
@@ -260,14 +267,11 @@ if ($query_bermasalah) {
     $total_bermasalah = (int) $data['total'];
 }
 
-/* =====================================
+/* =========================
    DATA TABEL DASHBOARD
-===================================== */
+========================= */
 
 if ($role === 'wali_kelas') {
-
-    // Tampilkan semua siswa di kelas wali kelas,
-    // termasuk siswa yang belum mempunyai pelanggaran.
 
     if ($kelas_id_login > 0 && $tahun_ajaran_id > 0) {
 
@@ -291,12 +295,12 @@ if ($role === 'wali_kelas') {
         );
 
     } else {
+
         $query_terbaru = false;
+
     }
 
 } else {
-
-    // Admin dan Guru tetap melihat pelanggaran terbaru.
 
     $query_terbaru = mysqli_query(
         $koneksi,
@@ -314,6 +318,7 @@ if ($role === 'wali_kelas') {
                   pelanggaran.id DESC
          LIMIT 5"
     );
+
 }
 
 ?>
@@ -348,6 +353,7 @@ if ($role === 'wali_kelas') {
             background: #687280;
             padding: 20px 12px;
             overflow-y: auto;
+            z-index: 1000;
         }
 
         .sidebar-title {
@@ -494,55 +500,12 @@ if ($role === 'wali_kelas') {
 
 <body>
 
-<!-- SIDEBAR -->
+<!-- SIDEBAR BERSAMA -->
 
-<div class="sidebar">
-
-    <div class="sidebar-title">
-        Pelanggaran<br>Siswa
-    </div>
-
-    <nav class="nav flex-column">
-
-        <a href="dashboard.php" class="nav-link active">
-            Dashboard
-        </a>
-
-        <?php if ($role === 'admin') { ?>
-
-            <a href="kelola_siswa.php" class="nav-link">Data Siswa</a>
-            <a href="kelola_guru.php" class="nav-link">Data Guru</a>
-            <a href="kelola_kelas.php" class="nav-link">Data Kelas</a>
-            <a href="kelola_tahun_ajaran.php" class="nav-link">Tahun Ajaran</a>
-            <a href="kelola_wali_kelas.php" class="nav-link">Wali Kelas</a>
-            <a href="penempatan_siswa.php" class="nav-link">Penempatan Siswa</a>
-            <a href="kelola_pelanggaran_kategori.php" class="nav-link">Kategori Pelanggaran</a>
-            <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
-            <a href="laporan.php" class="nav-link">Laporan</a>
-            <a href="about_me.php" class="nav-link">About Me</a>
-
-        <?php } elseif ($role === 'guru') { ?>
-
-            <a href="catat_pelanggaran.php" class="nav-link">Catat Pelanggaran</a>
-            <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
-            <a href="tindakan.php" class="nav-link">Data Tindakan</a>
-            <a href="riwayat.php" class="nav-link">Riwayat</a>
-            <a href="rekap_poin.php" class="nav-link">Rekap Poin</a>
-
-        <?php } elseif ($role === 'wali_kelas') { ?>
-
-            <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
-            <a href="tindakan.php" class="nav-link">Data Tindakan</a>
-            <a href="riwayat.php" class="nav-link">Riwayat</a>
-            <a href="rekap_poin.php" class="nav-link">Rekap Poin</a>
-
-        <?php } ?>
-
-        <a href="logout.php" class="nav-link logout">Logout</a>
-
-    </nav>
-
-</div>
+<?php
+$menu_aktif = 'dashboard';
+require_once "sidebar.php";
+?>
 
 <!-- KONTEN -->
 
@@ -552,7 +515,13 @@ if ($role === 'wali_kelas') {
 
         <h4>Sistem Informasi Pelanggaran Siswa</h4>
 
-        <p>Dashboard Sistem</p>
+        <p>
+            Dashboard Sistem
+            <?php if ($nama_tahun_ajaran !== '') { ?>
+                | Tahun Ajaran:
+                <?= htmlspecialchars($nama_tahun_ajaran); ?>
+            <?php } ?>
+        </p>
 
         <div class="info-user">
 
@@ -570,6 +539,8 @@ if ($role === 'wali_kelas') {
 
     </div>
 
+    <!-- SELAMAT DATANG -->
+
     <div class="welcome">
 
         <h5>
@@ -579,6 +550,7 @@ if ($role === 'wali_kelas') {
         <?php if ($role === 'wali_kelas') { ?>
 
             <p>
+
                 <?php if ($kelas_id_login > 0) { ?>
 
                     Pantau informasi seluruh siswa kelas
@@ -589,6 +561,7 @@ if ($role === 'wali_kelas') {
                     Data kelas wali kelas belum ditemukan pada tahun ajaran aktif.
 
                 <?php } ?>
+
             </p>
 
         <?php } else { ?>
@@ -606,59 +579,31 @@ if ($role === 'wali_kelas') {
     <div class="row g-3 mb-4">
 
         <div class="col-md-3 col-sm-6">
-
             <div class="stat-card">
-
                 <div class="stat-label">Total Siswa Aktif</div>
-
-                <p class="stat-number">
-                    <?= $total_siswa; ?>
-                </p>
-
+                <p class="stat-number"><?= $total_siswa; ?></p>
             </div>
-
         </div>
 
         <div class="col-md-3 col-sm-6">
-
             <div class="stat-card">
-
                 <div class="stat-label">Total Pelanggaran</div>
-
-                <p class="stat-number">
-                    <?= $total_pelanggaran; ?>
-                </p>
-
+                <p class="stat-number"><?= $total_pelanggaran; ?></p>
             </div>
-
         </div>
 
         <div class="col-md-3 col-sm-6">
-
             <div class="stat-card">
-
                 <div class="stat-label">Pelanggaran Bulan Ini</div>
-
-                <p class="stat-number">
-                    <?= $total_bulan; ?>
-                </p>
-
+                <p class="stat-number"><?= $total_bulan; ?></p>
             </div>
-
         </div>
 
         <div class="col-md-3 col-sm-6">
-
             <div class="stat-card">
-
                 <div class="stat-label">Siswa Bermasalah</div>
-
-                <p class="stat-number">
-                    <?= $total_bermasalah; ?>
-                </p>
-
+                <p class="stat-number"><?= $total_bermasalah; ?></p>
             </div>
-
         </div>
 
     </div>
@@ -689,9 +634,27 @@ if ($role === 'wali_kelas') {
 
             </div>
 
-            <a href="pelanggaran.php" class="btn btn-sm btn-lihat">
-                Lihat Semua
-            </a>
+            <!-- TOMBOL SESUAI ROLE -->
+
+            <?php if ($role === 'admin') { ?>
+
+                <a href="pelanggaran.php" class="btn btn-sm btn-lihat">
+                    Lihat Semua
+                </a>
+
+            <?php } elseif ($role === 'guru') { ?>
+
+                <a href="catat_pelanggaran.php" class="btn btn-sm btn-lihat">
+                    Catat Pelanggaran
+                </a>
+
+            <?php } elseif ($role === 'wali_kelas') { ?>
+
+                <a href="laporan.php" class="btn btn-sm btn-lihat">
+                    Lihat Laporan
+                </a>
+
+            <?php } ?>
 
         </div>
 
@@ -804,15 +767,11 @@ if ($role === 'wali_kelas') {
                     ?>
 
                         <tr>
-
                             <td colspan="5" class="text-center">
-
                                 <?= $role === 'wali_kelas'
                                     ? 'Belum ada siswa yang ditempatkan di kelas ini.'
                                     : 'Belum ada data pelanggaran.'; ?>
-
                             </td>
-
                         </tr>
 
                     <?php } ?>

@@ -1,3 +1,4 @@
+
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -548,30 +549,12 @@ body {
 
 <body>
 
-<!-- SIDEBAR -->
+<!-- SIDEBAR BERSAMA -->
 
-<div class="sidebar">
-
-    <div class="sidebar-title">
-         Pelanggaran<br>Siswa
-    </div>
-
-    <a href="dashboard.php">Dashboard</a>
-    <a href="kelola_siswa.php">Data Siswa</a>
-    <a href="kelola_guru.php">Data Guru</a>
-    <a href="kelola_kelas.php">Data Kelas</a>
-    <a href="kelola_tahun_ajaran.php">Tahun Ajaran</a>
-    <a href="kelola_wali_kelas.php" class="active">Wali Kelas</a>
-    <a href="penempatan_siswa.php">Penempatan Siswa</a>
-    <a href="kelola_pelanggaran_kategori.php">Kategori Pelanggaran</a>
-    <a href="pelanggaran.php">Data Pelanggaran</a>
-    <a href="laporan.php">Laporan</a>
-    <a href="about_me.php">About Me</a>
-
-    <a href="logout.php" class="logout">Logout</a>
-
-</div>
-
+<?php
+$menu_aktif = 'wali_kelas';
+require_once "sidebar.php";
+?>
 
 <!-- CONTENT -->
 
@@ -591,7 +574,6 @@ body {
         </div>
     </div>
 
-
     <!-- PESAN ERROR -->
 
     <?php if ($error != '') { ?>
@@ -601,7 +583,6 @@ body {
         </div>
 
     <?php } ?>
-
 
     <!-- FORM TAMBAH -->
 
@@ -662,7 +643,6 @@ body {
 
                         </div>
 
-
                         <div class="col-md-6">
 
                             <label class="form-label fw-bold">
@@ -704,7 +684,6 @@ body {
 
                         </div>
 
-
                         <div class="col-md-6">
 
                             <label class="form-label fw-bold">
@@ -733,7 +712,6 @@ body {
 
                     </div>
 
-
                     <div class="mt-3">
 
                         <button
@@ -761,7 +739,6 @@ body {
 
     <?php } ?>
 
-
     <!-- DAFTAR WALI KELAS -->
 
     <div class="card">
@@ -784,7 +761,6 @@ body {
                 <?php } ?>
 
             </div>
-
 
             <!-- PENCARIAN -->
 
@@ -822,7 +798,6 @@ body {
                 </div>
 
             </form>
-
 
             <!-- TABEL WALI KELAS -->
 
@@ -951,7 +926,6 @@ body {
 
             </div>
 
-
             <!-- INFORMASI DATA -->
 
             <div class="text-muted small">
@@ -965,7 +939,6 @@ body {
                 data wali kelas.
 
             </div>
-
 
             <!-- PAGINATION -->
 
@@ -990,7 +963,6 @@ body {
 
                         <?php } ?>
 
-
                         <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
 
                             <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
@@ -1005,7 +977,6 @@ body {
                             </li>
 
                         <?php } ?>
-
 
                         <?php if ($halaman < $total_halaman) { ?>
 
@@ -1033,7 +1004,6 @@ body {
     </div>
 
 </div>
-
 
 <script>
 

@@ -1,32 +1,23 @@
 <?php
 require_once "database.php";
 
-$email = "arisandriana@gmail.com";
-$password_baru = "password";
+$password = password_hash("guru123", PASSWORD_DEFAULT);
 
-$hash = password_hash($password_baru, PASSWORD_DEFAULT);
+$emails = [
+    "arisandriana@gmail.com",
+    "aldiganteng@gmail.com"
+];
 
-$query = "UPDATE users
-          SET password = ?
-          WHERE email = ?
-          AND role = 'guru'";
+$stmt = mysqli_prepare(
+    $koneksi,
+    "UPDATE users SET password = ? WHERE email = ?"
+);
 
-$stmt = mysqli_prepare($koneksi, $query);
+foreach ($emails as $email) {
+    mysqli_stmt_bind_param($stmt, "ss", $password, $email);
+    mysqli_stmt_execute($stmt);
 
-if (!$stmt) {
-    die("Gagal menyiapkan query: " . mysqli_error($koneksi));
-}
-
-mysqli_stmt_bind_param($stmt, "ss", $hash, $email);
-
-if (mysqli_stmt_execute($stmt)) {
-    if (mysqli_stmt_affected_rows($stmt) > 0) {
-        echo "Password guru berhasil diperbarui.";
-    } else {
-        echo "Tidak ada data yang diperbarui. Periksa email guru di database.";
-    }
-} else {
-    echo "Gagal memperbarui password: " . mysqli_stmt_error($stmt);
+    echo "$email berhasil diproses<br>";
 }
 
 mysqli_stmt_close($stmt);

@@ -10,8 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-// Hanya Guru dan Wali Kelas
-hanyaRole(['guru', 'wali_kelas']);
+hanyaRole(['admin', 'guru', 'wali_kelas']);
 
 $role = $_SESSION['role'] ?? '';
 $nama = $_SESSION['nama'] ?? 'Pengguna';
@@ -22,9 +21,33 @@ $whereParts = [];
 $parameter = [];
 $tipe = "";
 
-// =========================
+// =====================================
+// FUNGSI BIND PARAMETER
+// =====================================
+function bindParameterRekap($stmt, $tipe, &$parameter)
+{
+    if ($tipe === '' || empty($parameter)) {
+        return true;
+    }
+
+    $referensi = [];
+
+    foreach ($parameter as $key => &$value) {
+        $referensi[$key] = &$value;
+    }
+
+    return call_user_func_array(
+        'mysqli_stmt_bind_param',
+        array_merge([$stmt, $tipe], $referensi)
+    );
+}
+
+// =====================================
 // BATAS AKSES WALI KELAS
-// =========================
+// =====================================
+$kelas_wali_id = 0;
+$tahun_aktif_id = 0;
+
 if ($role === 'wali_kelas') {
 
     $email = $_SESSION['email'] ?? '';
@@ -38,8 +61,11 @@ if ($role === 'wali_kelas') {
             wk.kelas_id,
             ta.id AS tahun_ajaran_id
         FROM users u
+        LEFT JOIN guru g
+            ON g.id = u.guru_id
+            OR (u.guru_id IS NULL AND g.email = u.email)
         INNER JOIN wali_kelas wk
-            ON u.guru_id = wk.guru_id
+            ON wk.guru_id = COALESCE(u.guru_id, g.id)
         INNER JOIN tahun_ajaran ta
             ON wk.tahun_ajaran_id = ta.id
         WHERE u.email = ?
@@ -48,6 +74,10 @@ if ($role === 'wali_kelas') {
           AND ta.aktif = 1
         LIMIT 1
     ");
+
+    if (!$stmt_wali) {
+        die("Query Wali Kelas gagal: " . mysqli_error($koneksi));
+    }
 
     mysqli_stmt_bind_param($stmt_wali, "s", $email);
     mysqli_stmt_execute($stmt_wali);
@@ -58,7 +88,7 @@ if ($role === 'wali_kelas') {
     mysqli_stmt_close($stmt_wali);
 
     if (!$data_wali) {
-        die("Akses ditolak. Anda belum memiliki penempatan sebagai Wali Kelas pada tahun ajaran aktif.");
+        die("Penempatan Wali Kelas aktif tidak ditemukan.");
     }
 
     $kelas_wali_id = (int)$data_wali['kelas_id'];
@@ -68,7 +98,7 @@ if ($role === 'wali_kelas') {
         EXISTS (
             SELECT 1
             FROM penempatan_siswa ps
-            WHERE ps.siswa_id = siswa.id
+            WHERE ps.siswa_id = s.id
               AND ps.kelas_id = ?
               AND ps.tahun_ajaran_id = ?
         )
@@ -79,12 +109,15 @@ if ($role === 'wali_kelas') {
     $tipe .= "ii";
 }
 
-// =========================
+// =====================================
 // PENCARIAN
-// =========================
+// =====================================
 if ($cari !== '') {
 
-    $whereParts[] = "(siswa.nis LIKE ? OR siswa.nama LIKE ?)";
+    $whereParts[] = "(
+        s.nis LIKE ?
+        OR s.nama LIKE ?
+    )";
 
     $keyword = "%{$cari}%";
 
@@ -94,37 +127,41 @@ if ($cari !== '') {
     $tipe .= "ss";
 }
 
-$where = "";
+$where = '';
 
 if (!empty($whereParts)) {
     $where = "WHERE " . implode(" AND ", $whereParts);
 }
 
-// =========================
+// =====================================
 // PAGINATION
-// =========================
+// =====================================
 $batas = 10;
 $halaman = max(1, (int)($_GET['halaman'] ?? 1));
 
-// =========================
+// =====================================
 // HITUNG TOTAL SISWA
-// =========================
+// =====================================
 $sql_jumlah = "
     SELECT COUNT(*) AS total
-    FROM siswa
+    FROM siswa s
     $where
 ";
 
 $stmt_jumlah = mysqli_prepare($koneksi, $sql_jumlah);
 
-if (!empty($parameter)) {
-    mysqli_stmt_bind_param($stmt_jumlah, $tipe, ...$parameter);
+if (!$stmt_jumlah) {
+    die("Query jumlah siswa gagal: " . mysqli_error($koneksi));
 }
+
+bindParameterRekap($stmt_jumlah, $tipe, $parameter);
 
 mysqli_stmt_execute($stmt_jumlah);
 
 $result_jumlah = mysqli_stmt_get_result($stmt_jumlah);
-$jumlah_data = (int)mysqli_fetch_assoc($result_jumlah)['total'];
+$data_jumlah = mysqli_fetch_assoc($result_jumlah);
+
+$jumlah_data = (int)($data_jumlah['total'] ?? 0);
 
 mysqli_stmt_close($stmt_jumlah);
 
@@ -136,55 +173,62 @@ if ($halaman > $total_halaman) {
 
 $mulai = ($halaman - 1) * $batas;
 
-// =========================
+// =====================================
 // AMBIL DATA REKAP POIN
-// =========================
+// =====================================
 $sql = "
     SELECT
-        siswa.id,
-        siswa.nis,
-        siswa.nama,
-        COALESCE(SUM(jenis_pelanggaran.poin), 0) AS total_poin
-    FROM siswa
+        s.id,
+        s.nis,
+        s.nama,
+        COALESCE(SUM(jp.poin), 0) AS total_poin
+    FROM siswa s
 
-    LEFT JOIN pelanggaran
-        ON siswa.id = pelanggaran.siswa_id
+    LEFT JOIN pelanggaran p
+        ON s.id = p.siswa_id
 
-    LEFT JOIN jenis_pelanggaran
-        ON pelanggaran.jenis_id = jenis_pelanggaran.id
+    LEFT JOIN jenis_pelanggaran jp
+        ON p.jenis_id = jp.id
 
     $where
 
     GROUP BY
-        siswa.id,
-        siswa.nis,
-        siswa.nama
+        s.id,
+        s.nis,
+        s.nama
 
-    ORDER BY total_poin DESC, siswa.nama ASC
+    ORDER BY
+        total_poin DESC,
+        s.nama ASC
 
     LIMIT ?, ?
 ";
 
 $stmt = mysqli_prepare($koneksi, $sql);
 
+if (!$stmt) {
+    die("Query rekap poin gagal: " . mysqli_error($koneksi));
+}
+
 $parameter_data = $parameter;
 $parameter_data[] = $mulai;
 $parameter_data[] = $batas;
+
 $tipe_data = $tipe . "ii";
 
-mysqli_stmt_bind_param($stmt, $tipe_data, ...$parameter_data);
+bindParameterRekap($stmt, $tipe_data, $parameter_data);
+
 mysqli_stmt_execute($stmt);
 
 $query = mysqli_stmt_get_result($stmt);
 
 if (!$query) {
-    die("Query rekap poin gagal: " . mysqli_error($koneksi));
+    die("Gagal mengambil data rekap poin.");
 }
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -193,6 +237,10 @@ if (!$query) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
             background: #f4f6f8;
@@ -342,180 +390,153 @@ if (!$query) {
 
 <body>
 
-<div class="sidebar">
+    <?php
+    $menu_aktif = 'rekap_poin';
+    require_once "sidebar.php";
+    ?>
 
-    <div class="sidebar-title">
-        Pelanggaran<br>Siswa
-    </div>
+    <div class="content">
 
-    <nav class="nav flex-column">
-
-        <a href="dashboard.php" class="nav-link">Dashboard</a>
-
-        <?php if ($role === 'guru'): ?>
-            <a href="catat_pelanggaran.php" class="nav-link">Catat Pelanggaran</a>
-            <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
-            <a href="tindakan.php" class="nav-link">Data Tindakan</a>
-
-        <?php elseif ($role === 'wali_kelas'): ?>
-            <a href="pelanggaran.php" class="nav-link">Data Pelanggaran</a>
-            <a href="tindakan.php" class="nav-link">Data Tindakan</a>
-        <?php endif; ?>
-
-        <a href="riwayat.php" class="nav-link">Riwayat</a>
-        <a href="rekap_poin.php" class="nav-link active">Rekap Poin</a>
-
-        <a href="logout.php" class="nav-link logout">Logout</a>
-
-    </nav>
-</div>
-
-<div class="content">
-
-    <div class="header-box">
-        <h1>Rekap Poin Siswa</h1>
-
-        <p class="text-secondary mb-0">
-            Informasi total poin pelanggaran setiap siswa.
-        </p>
-    </div>
-
-    <div class="main-box">
-
-        <h2>Daftar Rekap Poin</h2>
-
-        <p class="deskripsi">
-            Daftar total poin pelanggaran siswa.
-        </p>
-
-        <form method="GET" class="row g-2 mb-3">
-
-            <div class="col-md-5">
-                <input
-                    type="text"
-                    name="cari"
-                    class="form-control"
-                    placeholder="Cari NIS atau nama siswa..."
-                    value="<?= htmlspecialchars($cari); ?>"
-                >
-            </div>
-
-            <div class="col-auto">
-                <button type="submit" class="btn btn-cari">Cari</button>
-
-                <a href="rekap_poin.php" class="btn btn-secondary">
-                    Reset
-                </a>
-            </div>
-
-        </form>
-
-        <div class="mb-3 text-secondary small">
-            Total data: <?= $jumlah_data; ?> siswa
+        <div class="header-box">
+            <h1>Rekap Poin Siswa</h1>
+            <p class="text-secondary mb-0">
+                Informasi total poin pelanggaran setiap siswa.
+            </p>
         </div>
 
-        <div class="table-responsive">
+        <div class="main-box">
 
-            <table class="table table-bordered table-hover">
+            <h2>Daftar Rekap Poin</h2>
 
-                <thead>
-                    <tr>
-                        <th>No</th>
-                        <th>NIS</th>
-                        <th>Nama Siswa</th>
-                        <th>Total Poin</th>
-                    </tr>
-                </thead>
+            <p class="deskripsi">
+                Daftar total poin pelanggaran siswa.
+            </p>
 
-                <tbody>
+            <form method="GET" class="row g-2 mb-3">
+                <div class="col-md-5">
+                    <input
+                        type="text"
+                        name="cari"
+                        class="form-control"
+                        placeholder="Cari NIS atau nama siswa..."
+                        value="<?= htmlspecialchars($cari); ?>"
+                    >
+                </div>
 
-                    <?php if (mysqli_num_rows($query) > 0): ?>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-cari">
+                        Cari
+                    </button>
 
-                        <?php
-                        $no = $mulai + 1;
+                    <a href="rekap_poin.php" class="btn btn-secondary">
+                        Reset
+                    </a>
+                </div>
+            </form>
 
-                        while ($data = mysqli_fetch_assoc($query)):
-                        ?>
+            <div class="mb-3 text-secondary small">
+                Total data: <?= $jumlah_data; ?> siswa
+            </div>
 
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th>No</th>
+                            <th>NIS</th>
+                            <th>Nama Siswa</th>
+                            <th>Total Poin</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <?php if (mysqli_num_rows($query) > 0): ?>
+
+                            <?php
+                            $no = $mulai + 1;
+
+                            while ($data = mysqli_fetch_assoc($query)):
+                            ?>
+                                <tr>
+                                    <td><?= $no++; ?></td>
+
+                                    <td>
+                                        <?= htmlspecialchars($data['nis']); ?>
+                                    </td>
+
+                                    <td>
+                                        <strong>
+                                            <?= htmlspecialchars($data['nama']); ?>
+                                        </strong>
+                                    </td>
+
+                                    <td>
+                                        <?php if ((int)$data['total_poin'] > 0): ?>
+                                            <span class="poin">
+                                                <?= (int)$data['total_poin']; ?> poin
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="aman">0 poin</span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endwhile; ?>
+
+                        <?php else: ?>
                             <tr>
-                                <td><?= $no++; ?></td>
-
-                                <td><?= htmlspecialchars($data['nis']); ?></td>
-
-                                <td>
-                                    <strong><?= htmlspecialchars($data['nama']); ?></strong>
-                                </td>
-
-                                <td>
-                                    <?php if ((int)$data['total_poin'] > 0): ?>
-                                        <span class="poin">
-                                            <?= (int)$data['total_poin']; ?> poin
-                                        </span>
-                                    <?php else: ?>
-                                        <span class="aman">0 poin</span>
-                                    <?php endif; ?>
+                                <td colspan="4" class="text-center py-4 text-secondary">
+                                    Data siswa tidak ditemukan.
                                 </td>
                             </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
 
-                        <?php endwhile; ?>
+            <?php if ($total_halaman > 1): ?>
+                <nav class="mt-3">
+                    <ul class="pagination justify-content-end">
 
-                    <?php else: ?>
-
-                        <tr>
-                            <td colspan="4" class="text-center py-4 text-secondary">
-                                Data siswa tidak ditemukan.
-                            </td>
-                        </tr>
-
-                    <?php endif; ?>
-
-                </tbody>
-            </table>
-        </div>
-
-        <?php if ($total_halaman > 1): ?>
-
-            <nav class="mt-3">
-                <ul class="pagination justify-content-end">
-
-                    <li class="page-item <?= $halaman <= 1 ? 'disabled' : ''; ?>">
-                        <a
-                            class="page-link"
-                            href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($cari); ?>"
-                        >
-                            Sebelumnya
-                        </a>
-                    </li>
-
-                    <?php for ($i = 1; $i <= $total_halaman; $i++): ?>
-                        <li class="page-item <?= $halaman === $i ? 'active' : ''; ?>">
+                        <li class="page-item <?= $halaman <= 1 ? 'disabled' : ''; ?>">
                             <a
                                 class="page-link"
-                                href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>"
+                                href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($cari); ?>"
                             >
-                                <?= $i; ?>
+                                Sebelumnya
                             </a>
                         </li>
-                    <?php endfor; ?>
 
-                    <li class="page-item <?= $halaman >= $total_halaman ? 'disabled' : ''; ?>">
-                        <a
-                            class="page-link"
-                            href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($cari); ?>"
-                        >
-                            Berikutnya
-                        </a>
-                    </li>
+                        <?php for ($i = 1; $i <= $total_halaman; $i++): ?>
+                            <li class="page-item <?= $halaman === $i ? 'active' : ''; ?>">
+                                <a
+                                    class="page-link"
+                                    href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>"
+                                >
+                                    <?= $i; ?>
+                                </a>
+                            </li>
+                        <?php endfor; ?>
 
-                </ul>
-            </nav>
+                        <li class="page-item <?= $halaman >= $total_halaman ? 'disabled' : ''; ?>">
+                            <a
+                                class="page-link"
+                                href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($cari); ?>"
+                            >
+                                Berikutnya
+                            </a>
+                        </li>
 
-        <?php endif; ?>
+                    </ul>
+                </nav>
+            <?php endif; ?>
 
+        </div>
     </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
+
+<?php
+mysqli_stmt_close($stmt);
+?>

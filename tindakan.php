@@ -10,7 +10,6 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-// Hanya Guru dan Wali Kelas
 hanyaRole(['guru', 'wali_kelas']);
 
 $role = $_SESSION['role'] ?? '';
@@ -18,13 +17,18 @@ $nama = $_SESSION['nama'] ?? 'Pengguna';
 
 $cari = trim($_GET['cari'] ?? '');
 
-$whereParts = [];
-$parameter = [];
-$tipe = "";
+/* =========================
+   FILTER DATA
+========================= */
 
-// =========================
-// BATAS AKSES WALI KELAS
-// =========================
+$whereParts = ["p.status = 'tercatat'"];
+$parameter = [];
+$tipe = '';
+
+/* =========================
+   BATAS AKSES WALI KELAS
+========================= */
+
 if ($role === 'wali_kelas') {
 
     $email = $_SESSION['email'] ?? '';
@@ -38,8 +42,11 @@ if ($role === 'wali_kelas') {
             wk.kelas_id,
             ta.id AS tahun_ajaran_id
         FROM users u
+        LEFT JOIN guru g
+            ON g.id = u.guru_id
+            OR (u.guru_id IS NULL AND g.email = u.email)
         INNER JOIN wali_kelas wk
-            ON u.guru_id = wk.guru_id
+            ON wk.guru_id = COALESCE(u.guru_id, g.id)
         INNER JOIN tahun_ajaran ta
             ON wk.tahun_ajaran_id = ta.id
         WHERE u.email = ?
@@ -48,6 +55,10 @@ if ($role === 'wali_kelas') {
           AND ta.aktif = 1
         LIMIT 1
     ");
+
+    if (!$stmt_wali) {
+        die("Query Wali Kelas gagal: " . mysqli_error($koneksi));
+    }
 
     mysqli_stmt_bind_param($stmt_wali, "s", $email);
     mysqli_stmt_execute($stmt_wali);
@@ -58,7 +69,7 @@ if ($role === 'wali_kelas') {
     mysqli_stmt_close($stmt_wali);
 
     if (!$data_wali) {
-        die("Akses ditolak. Anda belum memiliki penempatan sebagai Wali Kelas pada tahun ajaran aktif.");
+        die("Akses ditolak. Penempatan Wali Kelas aktif tidak ditemukan.");
     }
 
     $kelas_wali_id = (int)$data_wali['kelas_id'];
@@ -68,7 +79,7 @@ if ($role === 'wali_kelas') {
         EXISTS (
             SELECT 1
             FROM penempatan_siswa ps
-            WHERE ps.siswa_id = siswa.id
+            WHERE ps.siswa_id = s.id
               AND ps.kelas_id = ?
               AND ps.tahun_ajaran_id = ?
         )
@@ -79,17 +90,17 @@ if ($role === 'wali_kelas') {
     $tipe .= "ii";
 }
 
-// =========================
-// PENCARIAN
-// =========================
+/* =========================
+   PENCARIAN
+========================= */
+
 if ($cari !== '') {
 
     $whereParts[] = "(
-        siswa.nama LIKE ?
-        OR jenis_pelanggaran.nama LIKE ?
-        OR tindakan.tindakan LIKE ?
-        OR users.nama LIKE ?
-        OR tindakan.catatan LIKE ?
+        s.nama LIKE ?
+        OR s.nis LIKE ?
+        OR jp.nama LIKE ?
+        OR p.tanggal LIKE ?
     )";
 
     $keyword = "%{$cari}%";
@@ -98,37 +109,30 @@ if ($cari !== '') {
     $parameter[] = $keyword;
     $parameter[] = $keyword;
     $parameter[] = $keyword;
-    $parameter[] = $keyword;
 
-    $tipe .= "sssss";
+    $tipe .= "ssss";
 }
 
-$where = "";
+$where = "WHERE " . implode(" AND ", $whereParts);
 
-if (!empty($whereParts)) {
-    $where = "WHERE " . implode(" AND ", $whereParts);
-}
+/* =========================
+   PAGINATION
+========================= */
 
-// =========================
-// PAGINATION
-// =========================
 $batas = 5;
 $halaman = max(1, (int)($_GET['halaman'] ?? 1));
 
-// =========================
-// HITUNG TOTAL DATA
-// =========================
+/* =========================
+   HITUNG TOTAL DATA
+========================= */
+
 $sql_count = "
     SELECT COUNT(*) AS total
-    FROM tindakan
-    INNER JOIN pelanggaran
-        ON tindakan.pelanggaran_id = pelanggaran.id
-    INNER JOIN siswa
-        ON pelanggaran.siswa_id = siswa.id
-    INNER JOIN jenis_pelanggaran
-        ON pelanggaran.jenis_id = jenis_pelanggaran.id
-    LEFT JOIN users
-        ON tindakan.petugas_id = users.id
+    FROM pelanggaran p
+    INNER JOIN siswa s
+        ON p.siswa_id = s.id
+    INNER JOIN jenis_pelanggaran jp
+        ON p.jenis_id = jp.id
     $where
 ";
 
@@ -157,42 +161,39 @@ if ($halaman > $total_halaman) {
 
 $mulai = ($halaman - 1) * $batas;
 
-// =========================
-// AMBIL DATA RIWAYAT TINDAKAN
-// =========================
+/* =========================
+   AMBIL DATA PELANGGARAN
+   YANG BELUM DIPROSES
+========================= */
+
 $sql = "
     SELECT
-        tindakan.id,
-        siswa.nama AS nama_siswa,
-        jenis_pelanggaran.nama AS jenis,
-        jenis_pelanggaran.poin,
-        tindakan.tanggal,
-        tindakan.tindakan,
-        users.nama AS nama_petugas,
-        tindakan.catatan
-    FROM tindakan
-    INNER JOIN pelanggaran
-        ON tindakan.pelanggaran_id = pelanggaran.id
-    INNER JOIN siswa
-        ON pelanggaran.siswa_id = siswa.id
-    INNER JOIN jenis_pelanggaran
-        ON pelanggaran.jenis_id = jenis_pelanggaran.id
-    LEFT JOIN users
-        ON tindakan.petugas_id = users.id
+        p.id,
+        p.tanggal,
+        s.nama AS nama_siswa,
+        s.nis,
+        jp.nama AS jenis,
+        jp.poin
+    FROM pelanggaran p
+    INNER JOIN siswa s
+        ON p.siswa_id = s.id
+    INNER JOIN jenis_pelanggaran jp
+        ON p.jenis_id = jp.id
     $where
-    ORDER BY tindakan.tanggal DESC, tindakan.id DESC
+    ORDER BY p.tanggal DESC, p.id DESC
     LIMIT ?, ?
 ";
 
 $stmt = mysqli_prepare($koneksi, $sql);
 
 if (!$stmt) {
-    die("Query riwayat gagal: " . mysqli_error($koneksi));
+    die("Query data tindakan gagal: " . mysqli_error($koneksi));
 }
 
 $parameter_data = $parameter;
 $parameter_data[] = $mulai;
 $parameter_data[] = $batas;
+
 $tipe_data = $tipe . "ii";
 
 mysqli_stmt_bind_param($stmt, $tipe_data, ...$parameter_data);
@@ -201,7 +202,7 @@ mysqli_stmt_execute($stmt);
 $query = mysqli_stmt_get_result($stmt);
 
 if (!$query) {
-    die("Query error: " . mysqli_error($koneksi));
+    die("Query data tindakan gagal: " . mysqli_error($koneksi));
 }
 ?>
 
@@ -209,10 +210,11 @@ if (!$query) {
 <html lang="id">
 
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Riwayat Tindakan</title>
+<title>Tindakan</title>
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -225,6 +227,8 @@ body {
     font-size: 14px;
     color: #212529;
 }
+
+/* SIDEBAR */
 
 .sidebar {
     position: fixed;
@@ -269,10 +273,15 @@ body {
     background: #941d1d;
 }
 
+/* CONTENT */
+
 .content {
     margin-left: 220px;
     padding: 30px;
+    min-height: 100vh;
 }
+
+/* CARD */
 
 .card {
     border: 1px solid #ddd;
@@ -284,17 +293,7 @@ body {
     padding: 20px;
 }
 
-.btn-stabilo {
-    background: #9dff00;
-    color: #1a3300;
-    font-weight: bold;
-    border: none;
-}
-
-.btn-stabilo:hover {
-    background: #86e000;
-    color: #1a3300;
-}
+/* TABLE */
 
 .table {
     font-size: 12px;
@@ -311,6 +310,22 @@ body {
     white-space: nowrap;
 }
 
+/* BUTTON */
+
+.btn-proses {
+    background: #9dff00;
+    color: #1a3300;
+    font-weight: bold;
+    border: none;
+}
+
+.btn-proses:hover {
+    background: #86e000;
+    color: #1a3300;
+}
+
+/* PAGINATION */
+
 .page-link {
     color: #687280;
 }
@@ -320,6 +335,8 @@ body {
     border-color: #687280;
     color: white;
 }
+
+/* RESPONSIVE */
 
 @media (max-width: 700px) {
 
@@ -341,57 +358,42 @@ body {
 
 <body>
 
-<!-- SIDEBAR -->
+<!-- SIDEBAR BERSAMA -->
 
-<div class="sidebar">
-
-    <div class="sidebar-title">
-        Pelanggaran<br>Siswa
-    </div>
-
-    <a href="dashboard.php">Dashboard</a>
-
-    <?php if ($role === 'guru') { ?>
-
-        <a href="catat_pelanggaran.php">Catat Pelanggaran</a>
-        <a href="pelanggaran.php">Data Pelanggaran</a>
-        <a href="tindakan.php" class="active">Data Tindakan</a>
-
-    <?php } elseif ($role === 'wali_kelas') { ?>
-
-        <a href="pelanggaran.php">Data Pelanggaran</a>
-        <a href="tindakan.php" class="active">Data Tindakan</a>
-
-    <?php } ?>
-
-    <a href="riwayat.php">Riwayat</a>
-    <a href="rekap_poin.php">Rekap Poin</a>
-
-    <a href="logout.php" class="logout">Logout</a>
-
-</div>
+<?php
+$menu_aktif = 'tindakan';
+require_once "sidebar.php";
+?>
 
 <!-- CONTENT -->
 
 <div class="content">
 
+    <!-- HEADER -->
+
     <div class="card mb-3">
+
         <div class="card-body">
 
-            <h4 class="mb-1">Riwayat Pelanggaran</h4>
+            <h4 class="mb-1">Tindakan</h4>
 
             <p class="text-muted mb-0">
-                Daftar riwayat tindakan terhadap pelanggaran siswa.
+                Daftar pelanggaran siswa yang belum diproses.
             </p>
 
         </div>
+
     </div>
+
+    <!-- DATA TINDAKAN -->
 
     <div class="card">
 
         <div class="card-body">
 
-            <h5 class="mb-3">Daftar Riwayat Tindakan Siswa</h5>
+            <h5 class="mb-3">Pelanggaran Menunggu Tindakan</h5>
+
+            <!-- PENCARIAN -->
 
             <form method="GET" class="row g-2 mb-3">
 
@@ -401,7 +403,7 @@ body {
                         type="text"
                         name="cari"
                         class="form-control form-control-sm"
-                        placeholder="Cari nama siswa, pelanggaran, tindakan, petugas..."
+                        placeholder="Cari nama, NIS, atau pelanggaran..."
                         value="<?= htmlspecialchars($cari); ?>"
                     >
 
@@ -413,24 +415,23 @@ body {
                         Cari
                     </button>
 
-                    <?php if ($cari !== '') { ?>
+                    <?php if ($cari !== ''): ?>
 
-                        <a
-                            href="riwayat.php"
-                            class="btn btn-outline-secondary btn-sm"
-                        >
+                        <a href="tindakan.php" class="btn btn-outline-secondary btn-sm">
                             Reset
                         </a>
 
-                    <?php } ?>
+                    <?php endif; ?>
 
                 </div>
 
             </form>
 
             <div class="mb-3 text-muted small">
-                Total data: <?= $total_data; ?> riwayat tindakan
+                Total data: <?= $total_data; ?> pelanggaran menunggu tindakan
             </div>
+
+            <!-- TABEL -->
 
             <div class="table-responsive">
 
@@ -440,37 +441,41 @@ body {
 
                         <tr>
                             <th width="55">No</th>
+                            <th>NIS</th>
                             <th>Nama Siswa</th>
                             <th>Jenis Pelanggaran</th>
                             <th>Poin</th>
-                            <th>Tanggal Tindakan</th>
-                            <th>Tindakan</th>
-                            <th>Petugas</th>
-                            <th>Catatan</th>
+                            <th>Tanggal</th>
+                            <th>Status</th>
+                            <th>Aksi</th>
                         </tr>
 
                     </thead>
 
                     <tbody>
 
-                    <?php if (mysqli_num_rows($query) > 0) { ?>
+                    <?php if (mysqli_num_rows($query) > 0): ?>
 
                         <?php $no = $mulai + 1; ?>
 
-                        <?php while ($row = mysqli_fetch_assoc($query)) { ?>
+                        <?php while ($row = mysqli_fetch_assoc($query)): ?>
 
                             <tr>
 
                                 <td><?= $no++; ?></td>
 
                                 <td>
+                                    <?= htmlspecialchars($row['nis'] ?? '-'); ?>
+                                </td>
+
+                                <td>
                                     <strong>
-                                        <?= htmlspecialchars($row['nama_siswa']); ?>
+                                        <?= htmlspecialchars($row['nama_siswa'] ?? '-'); ?>
                                     </strong>
                                 </td>
 
                                 <td>
-                                    <?= htmlspecialchars($row['jenis']); ?>
+                                    <?= htmlspecialchars($row['jenis'] ?? '-'); ?>
                                 </td>
 
                                 <td>
@@ -478,42 +483,51 @@ body {
                                 </td>
 
                                 <td>
-                                    <?= htmlspecialchars($row['tanggal']); ?>
+                                    <?= !empty($row['tanggal'])
+                                        ? date('d-m-Y', strtotime($row['tanggal']))
+                                        : '-'; ?>
                                 </td>
 
                                 <td>
-                                    <?= nl2br(htmlspecialchars($row['tindakan'])); ?>
+                                    <span class="badge bg-warning text-dark">
+                                        Tercatat
+                                    </span>
                                 </td>
 
                                 <td>
-                                    <?= htmlspecialchars($row['nama_petugas'] ?? '-'); ?>
-                                </td>
 
-                                <td>
-                                    <?= nl2br(htmlspecialchars($row['catatan'] ?? '-')); ?>
+                                    <a
+                                        href="tambah_tindakan.php?pelanggaran_id=<?= (int)$row['id']; ?>"
+                                        class="btn btn-proses btn-sm"
+                                    >
+                                        Proses
+                                    </a>
+
                                 </td>
 
                             </tr>
 
-                        <?php } ?>
+                        <?php endwhile; ?>
 
-                    <?php } else { ?>
+                    <?php else: ?>
 
                         <tr>
 
                             <td colspan="8" class="text-center py-4">
-                                Belum ada riwayat tindakan.
+                                Tidak ada pelanggaran yang menunggu tindakan.
                             </td>
 
                         </tr>
 
-                    <?php } ?>
+                    <?php endif; ?>
 
                     </tbody>
 
                 </table>
 
             </div>
+
+            <!-- INFORMASI DATA -->
 
             <div class="text-muted small">
 
@@ -523,17 +537,19 @@ body {
                 <?= min($mulai + $batas, $total_data); ?>
                 dari
                 <?= $total_data; ?>
-                data riwayat.
+                data.
 
             </div>
 
-            <?php if ($total_halaman > 1) { ?>
+            <!-- PAGINATION -->
+
+            <?php if ($total_halaman > 1): ?>
 
                 <nav class="mt-3">
 
                     <ul class="pagination pagination-sm mb-0">
 
-                        <?php if ($halaman > 1) { ?>
+                        <?php if ($halaman > 1): ?>
 
                             <li class="page-item">
 
@@ -546,9 +562,9 @@ body {
 
                             </li>
 
-                        <?php } ?>
+                        <?php endif; ?>
 
-                        <?php for ($i = 1; $i <= $total_halaman; $i++) { ?>
+                        <?php for ($i = 1; $i <= $total_halaman; $i++): ?>
 
                             <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
 
@@ -561,9 +577,9 @@ body {
 
                             </li>
 
-                        <?php } ?>
+                        <?php endfor; ?>
 
-                        <?php if ($halaman < $total_halaman) { ?>
+                        <?php if ($halaman < $total_halaman): ?>
 
                             <li class="page-item">
 
@@ -576,13 +592,13 @@ body {
 
                             </li>
 
-                        <?php } ?>
+                        <?php endif; ?>
 
                     </ul>
 
                 </nav>
 
-            <?php } ?>
+            <?php endif; ?>
 
         </div>
 
