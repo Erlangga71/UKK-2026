@@ -10,7 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-hanyaRole(['admin',  'wali_kelas']);
+hanyaRole(['admin','guru','wali_kelas']);
 
 $role = $_SESSION['role'] ?? '';
 $error = '';
@@ -611,7 +611,7 @@ $total_data = count($data_laporan);
                 <div class="judul">
                     <h1>LAPORAN PELANGGARAN SISWA</h1>
                     <h2>SISTEM INFORMASI PELANGGARAN SISWA</h2>
-                    <p>SMK</p>
+                    <p>SMK MUHAMMADIYAH KOTA TASIKMALAYA</p>
 
                     <?php if ($tanggal_awal !== '' || $tanggal_akhir !== ''): ?>
                         <p>

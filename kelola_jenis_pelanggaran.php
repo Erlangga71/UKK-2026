@@ -30,7 +30,7 @@ Poin: <input name="poin" type="number" required>
 <button name="simpan">Simpan</button>
 </form>
 <br>
-<table border="1" cellpadding="8" cellspacing="0">
+<table="1" cellpadding="8" cellspacing="0">
 <tr><th>No</th><th>Kategori</th><th>Jenis</th><th>Poin</th><th>Aksi</th></tr>
 <?php $no=1; $q=mysqli_query($koneksi,"SELECT j.*, k.nama_kategori FROM tbl_jenis j JOIN tbl_kategori k ON j.id_kategori=k.id"); while($d=mysqli_fetch_assoc($q)){?>
 <tr><td><?=$no++?></td><td><?=$d['nama_kategori']?></td><td><?=$d['nama_jenis']?></td><td><?=$d['poin']?></td><td><a href="?hapus=<?=$d['id']?>" onclick="return confirm('Hapus? Semua pelanggaran & tindakan yg pake jenis ini ikut kehapus!')">Hapus</a></td></tr>
