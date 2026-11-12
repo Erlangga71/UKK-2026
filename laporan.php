@@ -10,7 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-hanyaRole(['admin', 'guru', 'wali_kelas']);
+hanyaRole(['admin',  'wali_kelas']);
 
 $role = $_SESSION['role'] ?? '';
 $error = '';
