@@ -63,6 +63,22 @@ if (isset($_POST['login'])) {
 
             } else {
 
+                /*
+                 * ROLE LOGIN HANYA ADMIN DAN GURU.
+                 *
+                 * Akun lama dengan role wali_kelas
+                 * diperlakukan sebagai guru.
+                 *
+                 * Status Wali Kelas ditentukan dari
+                 * tabel penugasan wali_kelas.
+                 */
+
+                $role_login = $user['role'];
+
+                if ($role_login === 'wali_kelas') {
+                    $role_login = 'guru';
+                }
+
                 session_regenerate_id(true);
 
                 $_SESSION['login'] = true;
@@ -70,7 +86,9 @@ if (isset($_POST['login'])) {
                 $_SESSION['id'] = $user['id'];
                 $_SESSION['nama'] = $user['nama'];
                 $_SESSION['email'] = $user['email'];
-                $_SESSION['role'] = $user['role'];
+                $_SESSION['role'] = $role_login;
+
+                mysqli_stmt_close($stmt);
 
                 header("Location: dashboard.php");
                 exit;
@@ -92,14 +110,12 @@ if (isset($_POST['login'])) {
 <html lang="id">
 
 <head>
-
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>Login | Sistem Informasi Pelanggaran Siswa</title>
 
     <style>
-
         * {
             box-sizing: border-box;
         }
@@ -125,8 +141,6 @@ if (isset($_POST['login'])) {
             overflow: hidden;
             box-shadow: 0 15px 45px rgba(30, 50, 70, 0.12);
         }
-
-        /* PANEL KIRI */
 
         .panel-kiri {
             width: 45%;
@@ -175,8 +189,6 @@ if (isset($_POST['login'])) {
             line-height: 1.8;
             color: #e0edf3;
         }
-
-        /* PANEL KANAN */
 
         .panel-kanan {
             width: 55%;
@@ -291,8 +303,6 @@ if (isset($_POST['login'])) {
             line-height: 1.7;
         }
 
-        /* RESPONSIVE */
-
         @media (max-width: 700px) {
 
             body {
@@ -331,16 +341,12 @@ if (isset($_POST['login'])) {
                 font-size: 24px;
             }
         }
-
     </style>
-
 </head>
 
 <body>
 
     <div class="login-container">
-
-        <!-- PANEL KIRI -->
 
         <div class="panel-kiri">
 
@@ -370,30 +376,24 @@ if (isset($_POST['login'])) {
 
         </div>
 
-        <!-- PANEL KANAN -->
-
         <div class="panel-kanan">
 
             <div class="judul-login">
-
                 <h2>Selamat Datang</h2>
 
                 <p>
                     Silakan masuk menggunakan email dan password
                     akun Anda untuk melanjutkan.
                 </p>
-
             </div>
 
             <?php if ($pesan != "") { ?>
-
                 <div class="error">
                     <?= htmlspecialchars($pesan); ?>
                 </div>
-
             <?php } ?>
 
-            <form method="POST">
+            <form method="POST" action="">
 
                 <div class="form-group">
 
@@ -440,6 +440,7 @@ if (isset($_POST['login'])) {
                 <button
                     type="submit"
                     name="login"
+                    value="1"
                     class="btn-login"
                 >
                     MASUK KE SISTEM
@@ -457,7 +458,6 @@ if (isset($_POST['login'])) {
     </div>
 
     <script>
-
         function togglePassword() {
 
             const password = document.getElementById("password");
@@ -472,7 +472,6 @@ if (isset($_POST['login'])) {
             }
 
         }
-
     </script>
 
 </body>

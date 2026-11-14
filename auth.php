@@ -7,13 +7,37 @@ if (session_status() === PHP_SESSION_NONE) {
 
 /*
 |--------------------------------------------------------------------------
+| ROLE YANG DIIZINKAN
+|--------------------------------------------------------------------------
+*/
+
+$role_diizinkan = ['admin', 'guru'];
+
+/*
+|--------------------------------------------------------------------------
 | WAJIB LOGIN
 |--------------------------------------------------------------------------
 */
 
 function wajib_login()
 {
-    if (!isset($_SESSION['login']) || $_SESSION['login'] !== true) {
+    global $role_diizinkan;
+
+    if (
+        !isset($_SESSION['login']) ||
+        $_SESSION['login'] !== true
+    ) {
+        header("Location: login.php");
+        exit;
+    }
+
+    // Pastikan hanya admin dan guru yang bisa masuk
+    $role = $_SESSION['role'] ?? '';
+
+    if (!in_array($role, $role_diizinkan, true)) {
+        session_unset();
+        session_destroy();
+
         header("Location: login.php");
         exit;
     }
@@ -21,17 +45,38 @@ function wajib_login()
 
 /*
 |--------------------------------------------------------------------------
-| CEK ROLE
+| ALIAS UNTUK KOMPATIBILITAS KODE LAMA
+|--------------------------------------------------------------------------
+*/
+
+function wajibLogin()
+{
+    wajib_login();
+}
+
+/*
+|--------------------------------------------------------------------------
+| CEK HAK AKSES ROLE
 |--------------------------------------------------------------------------
 */
 
 function hanyaRole($roles = [])
 {
+    global $role_diizinkan;
+
     wajib_login();
 
     $role = $_SESSION['role'] ?? '';
 
-    if (!in_array($role, $roles, true)) {
+    // Batasi semua pemeriksaan role ke admin dan guru
+    $roles_valid = array_intersect(
+        $roles,
+        $role_diizinkan
+    );
+
+    if (!in_array($role, $roles_valid, true)) {
+
+        http_response_code(403);
 
         echo "
         <!DOCTYPE html>

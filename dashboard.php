@@ -1,3 +1,4 @@
+
 <?php
 
 error_reporting(E_ALL);
@@ -10,26 +11,26 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . "/database.php";
 require_once __DIR__ . "/auth.php";
 
-hanyaRole(['admin', 'guru', 'wali_kelas']);
+hanyaRole(['admin', 'guru']);
 
 $nama  = $_SESSION['nama'] ?? 'Pengguna';
 $role  = $_SESSION['role'] ?? '';
 $email = $_SESSION['email'] ?? '-';
 
-if ($role === 'admin') {
-    $jabatan = 'Administrator';
-} elseif ($role === 'wali_kelas') {
-    $jabatan = 'Wali Kelas';
-} else {
-    $jabatan = 'Guru';
-}
+$jabatan = ($role === 'admin') ? 'Administrator' : 'Guru';
+
+$is_wali_kelas = false;
+
+$guru_id_login = 0;
+$kelas_id_login = 0;
+$nama_kelas_login = '';
+
+$tahun_ajaran_id = 0;
+$nama_tahun_ajaran = '';
 
 /* =========================
    TAHUN AJARAN AKTIF
 ========================= */
-
-$tahun_ajaran_id = 0;
-$nama_tahun_ajaran = '';
 
 $query_tahun = mysqli_query(
     $koneksi,
@@ -41,66 +42,48 @@ $query_tahun = mysqli_query(
 
 if ($query_tahun && mysqli_num_rows($query_tahun) > 0) {
     $data_tahun = mysqli_fetch_assoc($query_tahun);
+
     $tahun_ajaran_id = (int) $data_tahun['id'];
     $nama_tahun_ajaran = $data_tahun['nama'];
 }
 
 /* =========================
-   IDENTITAS WALI KELAS
+   IDENTITAS GURU
 ========================= */
 
-$guru_id_login = 0;
-$kelas_id_login = 0;
-$nama_kelas_login = '';
+if ($role === 'guru' && $email !== '-') {
 
-if ($role === 'wali_kelas') {
-
-    $stmt_user = mysqli_prepare(
+    // Cari guru melalui akun login.
+    // Mengutamakan users.guru_id, lalu mencocokkan email.
+    $stmt_guru = mysqli_prepare(
         $koneksi,
-        "SELECT guru_id
-         FROM users
-         WHERE email = ?
+        "SELECT COALESCE(u.guru_id, g.id) AS guru_id
+         FROM users u
+         LEFT JOIN guru g
+            ON (g.id = u.guru_id
+                OR (u.guru_id IS NULL AND g.email = u.email))
+         WHERE u.email = ?
+           AND u.aktif = 1
          LIMIT 1"
     );
 
-    if ($stmt_user) {
-        mysqli_stmt_bind_param($stmt_user, "s", $email);
-        mysqli_stmt_execute($stmt_user);
+    if ($stmt_guru) {
+        mysqli_stmt_bind_param($stmt_guru, "s", $email);
+        mysqli_stmt_execute($stmt_guru);
 
-        $result_user = mysqli_stmt_get_result($stmt_user);
+        $result_guru = mysqli_stmt_get_result($stmt_guru);
 
-        if ($result_user && mysqli_num_rows($result_user) > 0) {
-            $data_user = mysqli_fetch_assoc($result_user);
-            $guru_id_login = (int) ($data_user['guru_id'] ?? 0);
+        if ($result_guru && mysqli_num_rows($result_guru) > 0) {
+            $data_guru = mysqli_fetch_assoc($result_guru);
+            $guru_id_login = (int) ($data_guru['guru_id'] ?? 0);
         }
 
-        mysqli_stmt_close($stmt_user);
+        mysqli_stmt_close($stmt_guru);
     }
 
-    if ($guru_id_login <= 0) {
-
-        $stmt_guru = mysqli_prepare(
-            $koneksi,
-            "SELECT id
-             FROM guru
-             WHERE email = ?
-             LIMIT 1"
-        );
-
-        if ($stmt_guru) {
-            mysqli_stmt_bind_param($stmt_guru, "s", $email);
-            mysqli_stmt_execute($stmt_guru);
-
-            $result_guru = mysqli_stmt_get_result($stmt_guru);
-
-            if ($result_guru && mysqli_num_rows($result_guru) > 0) {
-                $data_guru = mysqli_fetch_assoc($result_guru);
-                $guru_id_login = (int) $data_guru['id'];
-            }
-
-            mysqli_stmt_close($stmt_guru);
-        }
-    }
+    /* =========================
+       CEK TUGAS WALI KELAS
+    ========================= */
 
     if ($guru_id_login > 0 && $tahun_ajaran_id > 0) {
 
@@ -131,6 +114,9 @@ if ($role === 'wali_kelas') {
 
                 $kelas_id_login = (int) $data_kelas['kelas_id'];
                 $nama_kelas_login = $data_kelas['nama_kelas'];
+
+                $is_wali_kelas = true;
+                $jabatan = 'Guru / Wali Kelas';
             }
 
             mysqli_stmt_close($stmt_kelas);
@@ -144,24 +130,38 @@ if ($role === 'wali_kelas') {
 
 $filter_pelanggaran = "";
 
-if ($role === 'wali_kelas') {
+if ($role === 'guru') {
 
-    if ($kelas_id_login > 0 && $tahun_ajaran_id > 0) {
+    if ($is_wali_kelas) {
 
-        $filter_pelanggaran = "
-            AND EXISTS (
-                SELECT 1
-                FROM penempatan_siswa ps
-                WHERE ps.siswa_id = pelanggaran.siswa_id
-                  AND ps.kelas_id = $kelas_id_login
-                  AND ps.tahun_ajaran_id = $tahun_ajaran_id
-            )
-        ";
+        // Wali Kelas hanya melihat pelanggaran siswa di kelasnya.
+        if ($kelas_id_login > 0 && $tahun_ajaran_id > 0) {
+
+            $filter_pelanggaran = "
+                AND EXISTS (
+                    SELECT 1
+                    FROM penempatan_siswa ps
+                    WHERE ps.siswa_id = pelanggaran.siswa_id
+                      AND ps.kelas_id = $kelas_id_login
+                      AND ps.tahun_ajaran_id = $tahun_ajaran_id
+                )
+            ";
+
+        } else {
+            $filter_pelanggaran = " AND 1 = 0 ";
+        }
 
     } else {
 
-        $filter_pelanggaran = " AND 1 = 0 ";
-
+        // Guru biasa hanya melihat pelanggaran yang dicatat sendiri.
+        if ($guru_id_login > 0) {
+            $filter_pelanggaran = "
+                AND pelanggaran.guru_id = $guru_id_login
+            ";
+        } else {
+            // Jika identitas guru tidak ditemukan, jangan tampilkan data guru lain.
+            $filter_pelanggaran = " AND 1 = 0 ";
+        }
     }
 }
 
@@ -169,7 +169,7 @@ if ($role === 'wali_kelas') {
    TOTAL SISWA AKTIF
 ========================= */
 
-if ($role === 'wali_kelas') {
+if ($is_wali_kelas) {
 
     if ($kelas_id_login > 0 && $tahun_ajaran_id > 0) {
 
@@ -185,9 +185,7 @@ if ($role === 'wali_kelas') {
         );
 
     } else {
-
         $query_siswa = false;
-
     }
 
 } else {
@@ -198,7 +196,6 @@ if ($role === 'wali_kelas') {
          FROM siswa
          WHERE aktif = 1"
     );
-
 }
 
 $total_siswa = 0;
@@ -270,7 +267,7 @@ if ($query_bermasalah) {
    DATA TABEL DASHBOARD
 ========================= */
 
-if ($role === 'wali_kelas') {
+if ($is_wali_kelas) {
 
     if ($kelas_id_login > 0 && $tahun_ajaran_id > 0) {
 
@@ -294,13 +291,34 @@ if ($role === 'wali_kelas') {
         );
 
     } else {
-
         $query_terbaru = false;
-
     }
+
+} elseif ($role === 'guru') {
+
+    // Guru biasa hanya melihat pelanggaran yang dicatat sendiri.
+    $query_terbaru = mysqli_query(
+        $koneksi,
+        "SELECT
+            siswa.nama AS nama_siswa,
+            jenis_pelanggaran.nama AS nama_pelanggaran,
+            pelanggaran.tanggal,
+            pelanggaran.keterangan
+         FROM pelanggaran
+         JOIN siswa
+            ON pelanggaran.siswa_id = siswa.id
+         JOIN jenis_pelanggaran
+            ON pelanggaran.jenis_id = jenis_pelanggaran.id
+         WHERE 1 = 1
+         $filter_pelanggaran
+         ORDER BY pelanggaran.tanggal DESC,
+                  pelanggaran.id DESC
+         LIMIT 5"
+    );
 
 } else {
 
+    // Admin melihat seluruh pelanggaran sekolah.
     $query_terbaru = mysqli_query(
         $koneksi,
         "SELECT
@@ -317,7 +335,6 @@ if ($role === 'wali_kelas') {
                   pelanggaran.id DESC
          LIMIT 5"
     );
-
 }
 
 ?>
@@ -499,7 +516,7 @@ if ($role === 'wali_kelas') {
 
 <body>
 
-<!-- SIDEBAR BERSAMA -->
+<!-- SIDEBAR -->
 
 <?php
 $menu_aktif = 'dashboard';
@@ -546,27 +563,23 @@ require_once __DIR__ . "/sidebar.php";
             Selamat Datang, <?= htmlspecialchars($nama); ?>
         </h5>
 
-        <?php if ($role === 'wali_kelas') { ?>
+        <?php if ($is_wali_kelas) { ?>
 
             <p>
+                Pantau informasi siswa kelas
+                <strong><?= htmlspecialchars($nama_kelas_login); ?></strong>.
+            </p>
 
-                <?php if ($kelas_id_login > 0) { ?>
+        <?php } elseif ($role === 'guru') { ?>
 
-                    Pantau informasi seluruh siswa kelas
-                    <strong><?= htmlspecialchars($nama_kelas_login); ?></strong>.
-
-                <?php } else { ?>
-
-                    Data kelas wali kelas belum ditemukan pada tahun ajaran aktif.
-
-                <?php } ?>
-
+            <p>
+                Pantau pelanggaran yang Anda catat sendiri.
             </p>
 
         <?php } else { ?>
 
             <p>
-                Kelola dan pantau data pelanggaran siswa melalui sistem ini.
+                Kelola dan pantau seluruh data pelanggaran siswa melalui sistem ini.
             </p>
 
         <?php } ?>
@@ -617,7 +630,7 @@ require_once __DIR__ . "/sidebar.php";
 
                 <h6 class="fw-bold mb-1">
 
-                    <?= $role === 'wali_kelas'
+                    <?= $is_wali_kelas
                         ? 'Data Seluruh Siswa Kelas'
                         : 'Informasi Pelanggaran'; ?>
 
@@ -625,15 +638,23 @@ require_once __DIR__ . "/sidebar.php";
 
                 <small class="text-secondary">
 
-                    <?= $role === 'wali_kelas'
-                        ? 'Daftar seluruh siswa, termasuk yang belum melakukan pelanggaran'
-                        : 'Daftar pelanggaran siswa terbaru'; ?>
+                    <?php if ($is_wali_kelas) { ?>
+
+                        Daftar seluruh siswa di kelas tanggung jawab Anda
+
+                    <?php } elseif ($role === 'guru') { ?>
+
+                        Daftar pelanggaran yang Anda catat sendiri
+
+                    <?php } else { ?>
+
+                        Daftar pelanggaran siswa terbaru dari seluruh sekolah
+
+                    <?php } ?>
 
                 </small>
 
             </div>
-
-            <!-- TOMBOL SESUAI ROLE -->
 
             <?php if ($role === 'admin') { ?>
 
@@ -641,16 +662,16 @@ require_once __DIR__ . "/sidebar.php";
                     Lihat Semua
                 </a>
 
-            <?php } elseif ($role === 'guru') { ?>
+            <?php } elseif ($is_wali_kelas) { ?>
+
+                <a href="laporan.php" class="btn btn-sm btn-lihat">
+                    Lihat Laporan Kelas
+                </a>
+
+            <?php } else { ?>
 
                 <a href="catat_pelanggaran.php" class="btn btn-sm btn-lihat">
                     Catat Pelanggaran
-                </a>
-
-            <?php } elseif ($role === 'wali_kelas') { ?>
-
-                <a href="laporan.php" class="btn btn-sm btn-lihat">
-                    Lihat Laporan
                 </a>
 
             <?php } ?>
@@ -663,7 +684,7 @@ require_once __DIR__ . "/sidebar.php";
 
                 <thead>
 
-                    <?php if ($role === 'wali_kelas') { ?>
+                    <?php if ($is_wali_kelas) { ?>
 
                         <tr>
                             <th width="6%">No</th>
@@ -703,7 +724,7 @@ require_once __DIR__ . "/sidebar.php";
 
                             <td><?= $no++; ?></td>
 
-                            <?php if ($role === 'wali_kelas') { ?>
+                            <?php if ($is_wali_kelas) { ?>
 
                                 <td>
                                     <?= htmlspecialchars($data['nis'] ?? '-'); ?>
@@ -767,7 +788,7 @@ require_once __DIR__ . "/sidebar.php";
 
                         <tr>
                             <td colspan="5" class="text-center">
-                                <?= $role === 'wali_kelas'
+                                <?= $is_wali_kelas
                                     ? 'Belum ada siswa yang ditempatkan di kelas ini.'
                                     : 'Belum ada data pelanggaran.'; ?>
                             </td>

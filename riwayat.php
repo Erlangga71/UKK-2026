@@ -10,11 +10,11 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-hanyaRole(['admin', 'guru', 'wali_kelas']);
+// Role login hanya Admin dan Guru
+hanyaRole(['admin', 'guru']);
 
 $role = $_SESSION['role'] ?? '';
 $nama = $_SESSION['nama'] ?? 'Pengguna';
-
 $cari = trim($_GET['cari'] ?? '');
 
 // =====================================
@@ -23,7 +23,7 @@ $cari = trim($_GET['cari'] ?? '');
 if (!function_exists('bindParameter')) {
     function bindParameter($stmt, $tipe, &$parameter)
     {
-        if ($tipe === '' || empty($parameter)) {
+        if ($tipe === '' || count($parameter) === 0) {
             return true;
         }
 
@@ -41,74 +41,87 @@ if (!function_exists('bindParameter')) {
 }
 
 // =====================================
-// BATAS AKSES WALI KELAS
+// FILTER AKSES BERDASARKAN PETUGAS
 // =====================================
-$kelas_wali_id = 0;
-$tahun_aktif_id = 0;
-
 $whereParts = [];
 $parameter = [];
 $tipe = '';
 
-if ($role === 'wali_kelas') {
+if ($role === 'guru') {
 
-    $email = $_SESSION['email'] ?? '';
+    $id_petugas = 0;
 
-    if ($email === '') {
-        die("Akses ditolak. Email akun tidak ditemukan.");
+    // Ambil ID akun Guru berdasarkan email login
+    $email = trim($_SESSION['email'] ?? '');
+
+    if ($email !== '') {
+        $stmt_user = mysqli_prepare($koneksi, "
+            SELECT id
+            FROM users
+            WHERE email = ?
+              AND aktif = 1
+              AND role IN ('guru', 'wali_kelas')
+            LIMIT 1
+        ");
+
+        if (!$stmt_user) {
+            die("Gagal mengambil akun Guru: " . mysqli_error($koneksi));
+        }
+
+        mysqli_stmt_bind_param($stmt_user, "s", $email);
+        mysqli_stmt_execute($stmt_user);
+
+        $hasil_user = mysqli_stmt_get_result($stmt_user);
+        $data_user = mysqli_fetch_assoc($hasil_user);
+
+        if ($data_user) {
+            $id_petugas = (int)$data_user['id'];
+        }
+
+        mysqli_stmt_close($stmt_user);
     }
 
-    $stmt_wali = mysqli_prepare($koneksi, "
-        SELECT
-            wk.kelas_id,
-            ta.id AS tahun_ajaran_id
-        FROM users u
-        LEFT JOIN guru g
-            ON g.id = u.guru_id
-            OR (u.guru_id IS NULL AND g.email = u.email)
-        INNER JOIN wali_kelas wk
-            ON wk.guru_id = COALESCE(u.guru_id, g.id)
-        INNER JOIN tahun_ajaran ta
-            ON wk.tahun_ajaran_id = ta.id
-        WHERE u.email = ?
-          AND u.role = 'wali_kelas'
-          AND u.aktif = 1
-          AND ta.aktif = 1
-        LIMIT 1
-    ");
+    // Jika email tidak tersedia, gunakan ID akun dari session
+    if ($id_petugas <= 0) {
+        $id_session = (int)($_SESSION['user_id'] ?? $_SESSION['id'] ?? 0);
 
-    if (!$stmt_wali) {
-        die("Gagal mengambil data Wali Kelas: " . mysqli_error($koneksi));
+        if ($id_session > 0) {
+            $stmt_user = mysqli_prepare($koneksi, "
+                SELECT id
+                FROM users
+                WHERE id = ?
+                  AND aktif = 1
+                  AND role IN ('guru', 'wali_kelas')
+                LIMIT 1
+            ");
+
+            if (!$stmt_user) {
+                die("Gagal mengambil akun Guru: " . mysqli_error($koneksi));
+            }
+
+            mysqli_stmt_bind_param($stmt_user, "i", $id_session);
+            mysqli_stmt_execute($stmt_user);
+
+            $hasil_user = mysqli_stmt_get_result($stmt_user);
+            $data_user = mysqli_fetch_assoc($hasil_user);
+
+            if ($data_user) {
+                $id_petugas = (int)$data_user['id'];
+            }
+
+            mysqli_stmt_close($stmt_user);
+        }
     }
 
-    mysqli_stmt_bind_param($stmt_wali, "s", $email);
-    mysqli_stmt_execute($stmt_wali);
-
-    $hasil_wali = mysqli_stmt_get_result($stmt_wali);
-    $data_wali = mysqli_fetch_assoc($hasil_wali);
-
-    mysqli_stmt_close($stmt_wali);
-
-    if (!$data_wali) {
-        die("Penempatan Wali Kelas aktif tidak ditemukan.");
+    // Jangan tampilkan seluruh riwayat jika akun tidak ditemukan
+    if ($id_petugas <= 0) {
+        die("Akses ditolak. ID akun Guru tidak ditemukan.");
     }
 
-    $kelas_wali_id = (int)$data_wali['kelas_id'];
-    $tahun_aktif_id = (int)$data_wali['tahun_ajaran_id'];
-
-    $whereParts[] = "
-        EXISTS (
-            SELECT 1
-            FROM penempatan_siswa ps
-            WHERE ps.siswa_id = s.id
-              AND ps.kelas_id = ?
-              AND ps.tahun_ajaran_id = ?
-        )
-    ";
-
-    $parameter[] = $kelas_wali_id;
-    $parameter[] = $tahun_aktif_id;
-    $tipe .= "ii";
+    // Guru hanya melihat tindakan yang dilakukan akun sendiri
+    $whereParts[] = "t.petugas_id = ?";
+    $parameter[] = $id_petugas;
+    $tipe .= "i";
 }
 
 // =====================================
@@ -171,7 +184,6 @@ if (!$stmt_count) {
 }
 
 bindParameter($stmt_count, $tipe, $parameter);
-
 mysqli_stmt_execute($stmt_count);
 
 $result_count = mysqli_stmt_get_result($stmt_count);
@@ -230,7 +242,6 @@ $parameter_data[] = $batas;
 $tipe_data = $tipe . "ii";
 
 bindParameter($stmt, $tipe_data, $parameter_data);
-
 mysqli_stmt_execute($stmt);
 
 $query = mysqli_stmt_get_result($stmt);
@@ -404,13 +415,11 @@ require_once "sidebar.php";
 <div class="content">
 
     <div class="header-box">
-
         <h1>Riwayat Pelanggaran</h1>
 
         <p class="text-secondary mb-0">
             Daftar riwayat tindakan siswa.
         </p>
-
     </div>
 
     <div class="main-box">
@@ -424,7 +433,6 @@ require_once "sidebar.php";
         <form method="GET" class="row g-2 mb-3">
 
             <div class="col-md-5">
-
                 <input
                     type="text"
                     name="cari"
@@ -432,11 +440,9 @@ require_once "sidebar.php";
                     placeholder="Cari nama, jenis, tindakan, petugas..."
                     value="<?= htmlspecialchars($cari); ?>"
                 >
-
             </div>
 
             <div class="col-auto">
-
                 <button type="submit" class="btn btn-cari">
                     Cari
                 </button>
@@ -444,7 +450,6 @@ require_once "sidebar.php";
                 <a href="riwayat.php" class="btn btn-secondary">
                     Reset
                 </a>
-
             </div>
 
         </form>
@@ -540,48 +545,40 @@ require_once "sidebar.php";
         <?php if ($total_halaman > 1): ?>
 
             <nav class="mt-3">
-
                 <ul class="pagination justify-content-end">
 
                     <li class="page-item <?= $halaman <= 1 ? 'disabled' : ''; ?>">
-
                         <a
                             class="page-link"
                             href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($cari); ?>"
                         >
                             Sebelumnya
                         </a>
-
                     </li>
 
                     <?php for ($i = 1; $i <= $total_halaman; $i++): ?>
 
                         <li class="page-item <?= $halaman === $i ? 'active' : ''; ?>">
-
                             <a
                                 class="page-link"
                                 href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>"
                             >
                                 <?= $i; ?>
                             </a>
-
                         </li>
 
                     <?php endfor; ?>
 
                     <li class="page-item <?= $halaman >= $total_halaman ? 'disabled' : ''; ?>">
-
                         <a
                             class="page-link"
                             href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($cari); ?>"
                         >
                             Berikutnya
                         </a>
-
                     </li>
 
                 </ul>
-
             </nav>
 
         <?php endif; ?>

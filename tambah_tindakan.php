@@ -10,7 +10,8 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-hanyaRole(['admin', 'guru', 'wali_kelas']);
+// Role login hanya Admin dan Guru
+hanyaRole(['admin', 'guru']);
 
 $role = $_SESSION['role'] ?? '';
 $pesan = '';
@@ -36,8 +37,8 @@ if (!$pelanggaran_id || $pelanggaran_id < 1) {
 // =====================================
 // AMBIL PETUGAS BERDASARKAN AKUN LOGIN
 // =====================================
-$email_login = $_SESSION['email'] ?? '';
-$id_login = (int)($_SESSION['id'] ?? 0);
+$email_login = trim($_SESSION['email'] ?? '');
+$id_login = (int)($_SESSION['id'] ?? $_SESSION['user_id'] ?? 0);
 
 if ($email_login === '' || $id_login < 1) {
     die("Data akun login tidak lengkap. Silakan login kembali.");
@@ -48,7 +49,7 @@ $stmt_akun = mysqli_prepare($koneksi, "
     FROM users
     WHERE id = ?
       AND email = ?
-      AND role = ?
+      AND role IN ('admin', 'guru', 'wali_kelas')
       AND aktif = 1
     LIMIT 1
 ");
@@ -59,10 +60,9 @@ if (!$stmt_akun) {
 
 mysqli_stmt_bind_param(
     $stmt_akun,
-    "iss",
+    "is",
     $id_login,
-    $email_login,
-    $role
+    $email_login
 );
 
 mysqli_stmt_execute($stmt_akun);
@@ -102,7 +102,6 @@ function ambilDataWali($koneksi)
         INNER JOIN tahun_ajaran ta
             ON wk.tahun_ajaran_id = ta.id
         WHERE u.email = ?
-          AND u.role = 'wali_kelas'
           AND u.aktif = 1
           AND ta.aktif = 1
         LIMIT 1
@@ -196,7 +195,7 @@ function ambilPelanggaran(
 }
 
 // =====================================
-// BATAS AKSES WALI KELAS
+// AMBIL DATA PENUGASAN WALI KELAS
 // =====================================
 $kelas_wali_id = 0;
 $tahun_aktif_id = 0;
@@ -254,23 +253,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             try {
 
-                // Cek ulang akun petugas yang sedang login.
+                // Validasi ulang akun petugas.
                 $stmt_validasi = mysqli_prepare($koneksi, "
                     SELECT id
                     FROM users
                     WHERE id = ?
                       AND email = ?
-                      AND role = ?
+                      AND role IN ('admin', 'guru', 'wali_kelas')
                       AND aktif = 1
                     LIMIT 1
                 ");
 
+                if (!$stmt_validasi) {
+                    throw new Exception(mysqli_error($koneksi));
+                }
+
                 mysqli_stmt_bind_param(
                     $stmt_validasi,
-                    "iss",
+                    "is",
                     $petugas_id,
-                    $email_login,
-                    $role
+                    $email_login
                 );
 
                 mysqli_stmt_execute($stmt_validasi);
@@ -284,21 +286,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception(
                         "Akun petugas tidak valid atau sudah tidak aktif."
                     );
-                }
-
-                // Cek ulang kewenangan Wali Kelas.
-                if ($role === 'wali_kelas') {
-
-                    $data_wali = ambilDataWali($koneksi);
-
-                    if (!$data_wali) {
-                        throw new Exception(
-                            "Penempatan Wali Kelas tidak ditemukan."
-                        );
-                    }
-
-                    $kelas_wali_id = (int)$data_wali['kelas_id'];
-                    $tahun_aktif_id = (int)$data_wali['tahun_ajaran_id'];
                 }
 
                 // Pastikan pelanggaran masih boleh diproses.
@@ -325,6 +312,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     FOR UPDATE
                 ");
 
+                if (!$stmt_kunci) {
+                    throw new Exception(mysqli_error($koneksi));
+                }
+
                 mysqli_stmt_bind_param(
                     $stmt_kunci,
                     "i",
@@ -339,9 +330,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_close($stmt_kunci);
 
                 if (!$data_kunci) {
-                    throw new Exception(
-                        "Pelanggaran sudah diproses."
-                    );
+                    throw new Exception("Pelanggaran sudah diproses.");
                 }
 
                 // Cegah tindakan ganda.
@@ -351,6 +340,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     WHERE pelanggaran_id = ?
                     LIMIT 1
                 ");
+
+                if (!$stmt_duplikat) {
+                    throw new Exception(mysqli_error($koneksi));
+                }
 
                 mysqli_stmt_bind_param(
                     $stmt_duplikat,
@@ -371,7 +364,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     );
                 }
 
-                // Simpan tindakan dengan petugas otomatis dari akun login.
+                // Simpan tindakan dengan ID akun login.
                 $stmt_simpan = mysqli_prepare($koneksi, "
                     INSERT INTO tindakan
                     (
@@ -384,6 +377,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (?, ?, ?, ?, ?)
                 ");
 
+                if (!$stmt_simpan) {
+                    throw new Exception(mysqli_error($koneksi));
+                }
+
                 mysqli_stmt_bind_param(
                     $stmt_simpan,
                     "issis",
@@ -395,9 +392,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
 
                 if (!mysqli_stmt_execute($stmt_simpan)) {
-                    throw new Exception(
-                        mysqli_stmt_error($stmt_simpan)
-                    );
+                    throw new Exception(mysqli_stmt_error($stmt_simpan));
                 }
 
                 mysqli_stmt_close($stmt_simpan);
@@ -409,6 +404,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     WHERE id = ?
                       AND status = 'tercatat'
                 ");
+
+                if (!$stmt_update) {
+                    throw new Exception(mysqli_error($koneksi));
+                }
 
                 mysqli_stmt_bind_param(
                     $stmt_update,

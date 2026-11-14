@@ -10,7 +10,8 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once "database.php";
 require_once "auth.php";
 
-hanyaRole(['admin','guru','wali_kelas']);
+// Role login hanya Admin dan Guru.
+hanyaRole(['admin', 'guru']);
 
 $role = $_SESSION['role'] ?? '';
 $error = '';
@@ -25,70 +26,20 @@ $tipe = '';
 
 $kelas_wali_id = 0;
 $tahun_aktif_id = 0;
+$guru_id = 0;
+
+$user_id = (int)($_SESSION['user_id'] ?? $_SESSION['id'] ?? 0);
+$email = trim($_SESSION['email'] ?? '');
+
+$join_penempatan = "";
 
 // =====================================
-// BATAS AKSES WALI KELAS
+// HAK AKSES ADMIN
 // =====================================
-if ($role === 'wali_kelas') {
 
-    $email = $_SESSION['email'] ?? '';
+if ($role === 'admin') {
 
-    if ($email === '') {
-        die("Akses ditolak. Email akun tidak ditemukan.");
-    }
-
-    $stmt_wali = mysqli_prepare($koneksi, "
-        SELECT
-            wk.kelas_id,
-            ta.id AS tahun_ajaran_id
-        FROM users u
-        LEFT JOIN guru g
-            ON g.id = u.guru_id
-            OR (u.guru_id IS NULL AND g.email = u.email)
-        INNER JOIN wali_kelas wk
-            ON wk.guru_id = COALESCE(u.guru_id, g.id)
-        INNER JOIN tahun_ajaran ta
-            ON ta.id = wk.tahun_ajaran_id
-        WHERE u.email = ?
-          AND u.role = 'wali_kelas'
-          AND u.aktif = 1
-          AND ta.aktif = 1
-        LIMIT 1
-    ");
-
-    if (!$stmt_wali) {
-        die("Gagal memeriksa penempatan Wali Kelas: " . mysqli_error($koneksi));
-    }
-
-    mysqli_stmt_bind_param($stmt_wali, "s", $email);
-    mysqli_stmt_execute($stmt_wali);
-
-    $hasil_wali = mysqli_stmt_get_result($stmt_wali);
-    $data_wali = mysqli_fetch_assoc($hasil_wali);
-
-    mysqli_stmt_close($stmt_wali);
-
-    if (!$data_wali) {
-        die("Akses ditolak. Anda belum memiliki penempatan sebagai Wali Kelas pada tahun ajaran aktif.");
-    }
-
-    $kelas_wali_id = (int)$data_wali['kelas_id'];
-    $tahun_aktif_id = (int)$data_wali['tahun_ajaran_id'];
-
-    $join_penempatan = "
-        INNER JOIN penempatan_siswa ps
-            ON ps.siswa_id = s.id
-            AND ps.kelas_id = ?
-            AND ps.tahun_ajaran_id = ?
-    ";
-
-    $parameter[] = $kelas_wali_id;
-    $parameter[] = $tahun_aktif_id;
-    $tipe .= "ii";
-
-} else {
-
-    // ADMIN DAN GURU MENGGUNAKAN PENEMPATAN TERBARU SISWA.
+    // Admin dapat melihat seluruh laporan sekolah.
     $join_penempatan = "
         LEFT JOIN penempatan_siswa ps
             ON ps.siswa_id = s.id
@@ -100,77 +51,222 @@ if ($role === 'wali_kelas') {
                 LIMIT 1
             )
     ";
-}
 
 // =====================================
-// BATAS AKSES GURU
-// GURU MELIHAT PELANGGARAN YANG:
-// 1. DICATAT OLEH DIRINYA SENDIRI.
-// 2. TINDAKANNYA DIPROSES OLEH DIRINYA.
+// HAK AKSES GURU / WALI KELAS
 // =====================================
-if ($role === 'guru') {
 
-    $email = $_SESSION['email'] ?? '';
+} elseif ($role === 'guru') {
 
-    if ($email === '') {
-        die("Akses ditolak. Email akun Guru tidak ditemukan.");
+    // =====================================
+    // CARI AKUN LOGIN
+    // =====================================
+
+    $data_user = null;
+
+    if ($user_id > 0) {
+
+        $stmt_user = mysqli_prepare(
+            $koneksi,
+            "SELECT id, guru_id, email
+             FROM users
+             WHERE id = ?
+               AND aktif = 1
+             LIMIT 1"
+        );
+
+        if (!$stmt_user) {
+            die("Gagal mencari akun: " . mysqli_error($koneksi));
+        }
+
+        mysqli_stmt_bind_param($stmt_user, "i", $user_id);
+        mysqli_stmt_execute($stmt_user);
+
+        $hasil_user = mysqli_stmt_get_result($stmt_user);
+        $data_user = mysqli_fetch_assoc($hasil_user);
+
+        mysqli_stmt_close($stmt_user);
     }
 
-    $stmt_guru = mysqli_prepare($koneksi, "
-        SELECT
-            u.id AS user_id,
-            COALESCE(u.guru_id, g.id) AS guru_id
-        FROM users u
-        LEFT JOIN guru g
-            ON g.id = u.guru_id
-            OR (u.guru_id IS NULL AND g.email = u.email)
-        WHERE u.email = ?
-          AND u.role = 'guru'
-          AND u.aktif = 1
-        LIMIT 1
-    ");
+    // Cadangan pencarian berdasarkan email.
+    if (!$data_user && $email !== '') {
 
-    if (!$stmt_guru) {
-        die("Gagal mengambil data Guru: " . mysqli_error($koneksi));
+        $stmt_user = mysqli_prepare(
+            $koneksi,
+            "SELECT id, guru_id, email
+             FROM users
+             WHERE email = ?
+               AND aktif = 1
+             LIMIT 1"
+        );
+
+        if (!$stmt_user) {
+            die("Gagal mencari akun: " . mysqli_error($koneksi));
+        }
+
+        mysqli_stmt_bind_param($stmt_user, "s", $email);
+        mysqli_stmt_execute($stmt_user);
+
+        $hasil_user = mysqli_stmt_get_result($stmt_user);
+        $data_user = mysqli_fetch_assoc($hasil_user);
+
+        mysqli_stmt_close($stmt_user);
     }
 
-    mysqli_stmt_bind_param($stmt_guru, "s", $email);
-    mysqli_stmt_execute($stmt_guru);
-
-    $hasil_guru = mysqli_stmt_get_result($stmt_guru);
-    $data_guru = mysqli_fetch_assoc($hasil_guru);
-
-    mysqli_stmt_close($stmt_guru);
-
-    if (
-        !$data_guru ||
-        empty($data_guru['guru_id']) ||
-        empty($data_guru['user_id'])
-    ) {
-        die("Akses ditolak. Data akun Guru tidak ditemukan atau belum terhubung dengan data Guru.");
+    if (!$data_user) {
+        http_response_code(403);
+        die("Akses ditolak. Data akun login tidak ditemukan.");
     }
 
-    $guru_id = (int)$data_guru['guru_id'];
-    $user_id = (int)$data_guru['user_id'];
+    // =====================================
+    // HUBUNGKAN AKUN DENGAN DATA GURU
+    // =====================================
 
-    $where[] = "(
-        p.guru_id = ?
-        OR EXISTS (
-            SELECT 1
-            FROM tindakan t
-            WHERE t.pelanggaran_id = p.id
-              AND t.petugas_id = ?
-        )
-    )";
+    // Utamakan users.guru_id.
+    $guru_id = (int)($data_user['guru_id'] ?? 0);
 
-    $parameter[] = $guru_id;
-    $parameter[] = $user_id;
+    if ($guru_id > 0) {
+
+        $stmt_guru = mysqli_prepare(
+            $koneksi,
+            "SELECT id
+             FROM guru
+             WHERE id = ?
+             LIMIT 1"
+        );
+
+        if (!$stmt_guru) {
+            die("Gagal mencari data Guru: " . mysqli_error($koneksi));
+        }
+
+        mysqli_stmt_bind_param($stmt_guru, "i", $guru_id);
+        mysqli_stmt_execute($stmt_guru);
+
+        $hasil_guru = mysqli_stmt_get_result($stmt_guru);
+        $data_guru = mysqli_fetch_assoc($hasil_guru);
+
+        mysqli_stmt_close($stmt_guru);
+
+        if (!$data_guru) {
+            $guru_id = 0;
+        }
+    }
+
+    // Jika guru_id kosong, cari berdasarkan email.
+    if ($guru_id <= 0) {
+
+        $email_guru = trim($data_user['email'] ?? '');
+
+        $stmt_guru = mysqli_prepare(
+            $koneksi,
+            "SELECT id
+             FROM guru
+             WHERE email = ?
+             LIMIT 1"
+        );
+
+        if (!$stmt_guru) {
+            die("Gagal mencari data Guru: " . mysqli_error($koneksi));
+        }
+
+        mysqli_stmt_bind_param($stmt_guru, "s", $email_guru);
+        mysqli_stmt_execute($stmt_guru);
+
+        $hasil_guru = mysqli_stmt_get_result($stmt_guru);
+        $data_guru = mysqli_fetch_assoc($hasil_guru);
+
+        mysqli_stmt_close($stmt_guru);
+
+        if ($data_guru) {
+            $guru_id = (int)$data_guru['id'];
+        }
+    }
+
+    if ($guru_id <= 0) {
+        http_response_code(403);
+        die("Akses ditolak. Akun ini belum terhubung dengan data Guru.");
+    }
+
+    // =====================================
+    // CARI TAHUN AJARAN AKTIF
+    // =====================================
+
+    $query_tahun = mysqli_query(
+        $koneksi,
+        "SELECT id
+         FROM tahun_ajaran
+         WHERE aktif = 1
+         LIMIT 1"
+    );
+
+    if (!$query_tahun) {
+        die("Gagal memeriksa tahun ajaran: " . mysqli_error($koneksi));
+    }
+
+    $data_tahun = mysqli_fetch_assoc($query_tahun);
+
+    if (!$data_tahun) {
+        http_response_code(403);
+        die("Akses ditolak. Belum ada tahun ajaran aktif.");
+    }
+
+    $tahun_aktif_id = (int)$data_tahun['id'];
+
+    // =====================================
+    // PERIKSA PENUGASAN WALI KELAS
+    // =====================================
+
+    $stmt_wali = mysqli_prepare(
+        $koneksi,
+        "SELECT kelas_id
+         FROM wali_kelas
+         WHERE guru_id = ?
+           AND tahun_ajaran_id = ?
+         LIMIT 1"
+    );
+
+    if (!$stmt_wali) {
+        die("Gagal memeriksa penugasan Wali Kelas: " . mysqli_error($koneksi));
+    }
+
+    mysqli_stmt_bind_param(
+        $stmt_wali,
+        "ii",
+        $guru_id,
+        $tahun_aktif_id
+    );
+
+    mysqli_stmt_execute($stmt_wali);
+
+    $hasil_wali = mysqli_stmt_get_result($stmt_wali);
+    $data_wali = mysqli_fetch_assoc($hasil_wali);
+
+    mysqli_stmt_close($stmt_wali);
+
+    if (!$data_wali) {
+        http_response_code(403);
+        die("Akses ditolak. Guru ini tidak memiliki penugasan Wali Kelas pada tahun ajaran aktif.");
+    }
+
+    // Guru Wali Kelas hanya boleh melihat kelas tanggung jawabnya.
+    $kelas_wali_id = (int)$data_wali['kelas_id'];
+
+    $join_penempatan = "
+        INNER JOIN penempatan_siswa ps
+            ON ps.siswa_id = s.id
+            AND ps.kelas_id = ?
+            AND ps.tahun_ajaran_id = ?
+    ";
+
+    $parameter[] = $kelas_wali_id;
+    $parameter[] = $tahun_aktif_id;
     $tipe .= "ii";
 }
 
 // =====================================
 // VALIDASI TANGGAL
 // =====================================
+
 foreach (['tanggal_awal', 'tanggal_akhir'] as $field) {
 
     if ($$field !== '') {
@@ -195,6 +291,7 @@ if (
 // =====================================
 // FILTER PENCARIAN
 // =====================================
+
 if ($cari !== '') {
 
     $where[] = "(
@@ -215,13 +312,16 @@ if ($cari !== '') {
 // =====================================
 // FILTER TANGGAL
 // =====================================
+
 if ($tanggal_awal !== '') {
+
     $where[] = "p.tanggal >= ?";
     $parameter[] = $tanggal_awal;
     $tipe .= "s";
 }
 
 if ($tanggal_akhir !== '') {
+
     $where[] = "p.tanggal <= ?";
     $parameter[] = $tanggal_akhir;
     $tipe .= "s";
@@ -234,6 +334,7 @@ $where_sql = !empty($where)
 // =====================================
 // QUERY LAPORAN
 // =====================================
+
 $sql = "
     SELECT
         p.id,
@@ -264,6 +365,7 @@ $sql = "
 // =====================================
 // AMBIL DATA LAPORAN
 // =====================================
+
 $data_laporan = [];
 
 if ($error === '') {
@@ -281,6 +383,8 @@ if ($error === '') {
         foreach ($parameter as $key => &$value) {
             $referensi[$key] = &$value;
         }
+
+        unset($value);
 
         if (!call_user_func_array(
             'mysqli_stmt_bind_param',
@@ -308,13 +412,16 @@ if ($error === '') {
 }
 
 $total_data = count($data_laporan);
+
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Laporan Pelanggaran</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -534,9 +641,7 @@ $total_data = count($data_laporan);
                 <form method="GET" class="row g-3">
 
                     <div class="col-md-4">
-                        <label class="form-label fw-bold">
-                            Cari Data
-                        </label>
+                        <label class="form-label fw-bold">Cari Data</label>
 
                         <input
                             type="text"
@@ -548,9 +653,7 @@ $total_data = count($data_laporan);
                     </div>
 
                     <div class="col-md-3">
-                        <label class="form-label fw-bold">
-                            Tanggal Awal
-                        </label>
+                        <label class="form-label fw-bold">Tanggal Awal</label>
 
                         <input
                             type="date"
@@ -561,9 +664,7 @@ $total_data = count($data_laporan);
                     </div>
 
                     <div class="col-md-3">
-                        <label class="form-label fw-bold">
-                            Tanggal Akhir
-                        </label>
+                        <label class="form-label fw-bold">Tanggal Akhir</label>
 
                         <input
                             type="date"
@@ -574,6 +675,7 @@ $total_data = count($data_laporan);
                     </div>
 
                     <div class="col-md-2 d-flex align-items-end">
+
                         <button type="submit" class="btn btn-secondary btn-sm me-2">
                             Cari
                         </button>
@@ -583,13 +685,17 @@ $total_data = count($data_laporan);
                             $tanggal_awal !== '' ||
                             $tanggal_akhir !== ''
                         ): ?>
+
                             <a href="laporan.php" class="btn btn-outline-secondary btn-sm">
                                 Reset
                             </a>
+
                         <?php endif; ?>
+
                     </div>
 
                 </form>
+
             </div>
         </div>
 
@@ -597,6 +703,7 @@ $total_data = count($data_laporan);
             <div class="card-body">
 
                 <div class="d-flex justify-content-between align-items-center mb-3 no-print">
+
                     <h5 class="mb-0">Data Pelanggaran</h5>
 
                     <button
@@ -606,14 +713,17 @@ $total_data = count($data_laporan);
                     >
                         Cetak Laporan
                     </button>
+
                 </div>
 
                 <div class="judul">
+
                     <h1>LAPORAN PELANGGARAN SISWA</h1>
                     <h2>SISTEM INFORMASI PELANGGARAN SISWA</h2>
                     <p>SMK MUHAMMADIYAH KOTA TASIKMALAYA</p>
 
                     <?php if ($tanggal_awal !== '' || $tanggal_akhir !== ''): ?>
+
                         <p>
                             Periode:
 
@@ -627,11 +737,13 @@ $total_data = count($data_laporan);
                                 ? date('d-m-Y', strtotime($tanggal_akhir))
                                 : 'Sekarang'; ?>
                         </p>
+
                     <?php endif; ?>
 
                     <p>
                         Tanggal Cetak: <?= date('d-m-Y'); ?>
                     </p>
+
                 </div>
 
                 <div class="mb-2 text-secondary small">
@@ -639,6 +751,7 @@ $total_data = count($data_laporan);
                 </div>
 
                 <div class="table-responsive">
+
                     <table class="table table-bordered table-hover align-middle">
 
                         <thead class="table-secondary">
@@ -654,12 +767,15 @@ $total_data = count($data_laporan);
                         </thead>
 
                         <tbody>
+
                             <?php if (!empty($data_laporan)): ?>
 
                                 <?php $no = 1; ?>
 
                                 <?php foreach ($data_laporan as $data): ?>
+
                                     <tr>
+
                                         <td><?= $no++; ?></td>
 
                                         <td>
@@ -687,22 +803,29 @@ $total_data = count($data_laporan);
                                         <td>
                                             <?= htmlspecialchars($data['status'] ?? '-'); ?>
                                         </td>
+
                                     </tr>
+
                                 <?php endforeach; ?>
 
                             <?php else: ?>
+
                                 <tr>
                                     <td colspan="7" class="kosong">
                                         Tidak ada data pelanggaran yang ditemukan.
                                     </td>
                                 </tr>
+
                             <?php endif; ?>
+
                         </tbody>
 
                     </table>
+
                 </div>
 
                 <div class="ttd">
+
                     <div>Mengetahui,</div>
                     <div>Kepala Sekolah</div>
 
@@ -710,6 +833,7 @@ $total_data = count($data_laporan);
 
                     <strong>Drs. H. Wawan Kurniawan, M.Pd.</strong><br>
                     <strong>NIP. 19650101 199003 1 005</strong>
+
                 </div>
 
             </div>
@@ -718,5 +842,6 @@ $total_data = count($data_laporan);
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 </html>

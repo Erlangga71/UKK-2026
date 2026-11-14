@@ -42,17 +42,10 @@ if (isset($_POST['simpan'])) {
              LIMIT 1"
         );
 
-        mysqli_stmt_bind_param(
-            $cek,
-            "iii",
-            $siswa_id,
-            $kelas_id,
-            $tahun_ajaran_id
-        );
-
+        mysqli_stmt_bind_param($cek, "iii", $siswa_id, $kelas_id, $tahun_ajaran_id);
         mysqli_stmt_execute($cek);
-        $hasil_cek = mysqli_stmt_get_result($cek);
 
+        $hasil_cek = mysqli_stmt_get_result($cek);
         $sudah_ada = mysqli_num_rows($hasil_cek) > 0;
 
         mysqli_stmt_close($cek);
@@ -70,13 +63,7 @@ if (isset($_POST['simpan'])) {
                  VALUES (?, ?, ?)"
             );
 
-            mysqli_stmt_bind_param(
-                $stmt,
-                "iii",
-                $siswa_id,
-                $kelas_id,
-                $tahun_ajaran_id
-            );
+            mysqli_stmt_bind_param($stmt, "iii", $siswa_id, $kelas_id, $tahun_ajaran_id);
 
             if (mysqli_stmt_execute($stmt)) {
 
@@ -87,9 +74,7 @@ if (isset($_POST['simpan'])) {
 
             } else {
 
-                $error = "Gagal menyimpan penempatan: " .
-                         mysqli_stmt_error($stmt);
-
+                $error = "Gagal menyimpan penempatan: " . mysqli_stmt_error($stmt);
                 mysqli_stmt_close($stmt);
             }
         }
@@ -158,11 +143,10 @@ $cari_sql = "%" . $cari . "%";
 ========================= */
 
 $batas = 10;
-
 $halaman = max(1, (int)($_GET['halaman'] ?? 1));
 
 /* =========================
-   HITUNG DATA
+   HITUNG TOTAL DATA
 ========================= */
 
 $stmt_total = mysqli_prepare(
@@ -172,10 +156,12 @@ $stmt_total = mysqli_prepare(
      INNER JOIN siswa s ON p.siswa_id = s.id
      INNER JOIN kelas k ON p.kelas_id = k.id
      INNER JOIN tahun_ajaran t ON p.tahun_ajaran_id = t.id
-     WHERE s.nis LIKE ?
+     WHERE (
+        s.nis LIKE ?
         OR s.nama LIKE ?
         OR k.nama_kelas LIKE ?
-        OR t.nama LIKE ?"
+        OR t.nama LIKE ?
+     )"
 );
 
 mysqli_stmt_bind_param(
@@ -195,10 +181,7 @@ $total_data = (int)mysqli_fetch_assoc(
 
 mysqli_stmt_close($stmt_total);
 
-$total_halaman = max(
-    1,
-    (int)ceil($total_data / $batas)
-);
+$total_halaman = max(1, (int)ceil($total_data / $batas));
 
 if ($halaman > $total_halaman) {
     $halaman = $total_halaman;
@@ -222,10 +205,12 @@ $stmt_data = mysqli_prepare(
      INNER JOIN siswa s ON p.siswa_id = s.id
      INNER JOIN kelas k ON p.kelas_id = k.id
      INNER JOIN tahun_ajaran t ON p.tahun_ajaran_id = t.id
-     WHERE s.nis LIKE ?
+     WHERE (
+        s.nis LIKE ?
         OR s.nama LIKE ?
         OR k.nama_kelas LIKE ?
         OR t.nama LIKE ?
+     )
      ORDER BY p.id DESC
      LIMIT ?, ?"
 );
@@ -267,8 +252,6 @@ body {
     font-size: 14px;
     color: #212529;
 }
-
-/* SIDEBAR */
 
 .sidebar {
     position: fixed;
@@ -313,14 +296,10 @@ body {
     background: #941d1d;
 }
 
-/* CONTENT */
-
 .content {
     margin-left: 220px;
     padding: 30px;
 }
-
-/* PANEL */
 
 .card {
     border: 1px solid #ddd;
@@ -331,8 +310,6 @@ body {
 .card-body {
     padding: 20px;
 }
-
-/* BUTTON */
 
 .btn-stabilo {
     background: #9dff00;
@@ -346,8 +323,6 @@ body {
     color: #1a3300;
 }
 
-/* TABLE */
-
 .table {
     font-size: 12px;
     margin-bottom: 10px;
@@ -359,8 +334,6 @@ body {
     vertical-align: middle;
 }
 
-/* PAGINATION */
-
 .page-link {
     color: #687280;
 }
@@ -370,8 +343,6 @@ body {
     border-color: #687280;
     color: white;
 }
-
-/* RESPONSIVE */
 
 @media (max-width: 700px) {
 
@@ -393,21 +364,14 @@ body {
 
 <body>
 
-<!-- SIDEBAR BERSAMA -->
-
 <?php
 $menu_aktif = 'penempatan_siswa';
 require_once "sidebar.php";
 ?>
 
-<!-- CONTENT -->
-
 <div class="content">
 
-    <!-- HEADER -->
-
     <div class="card mb-3">
-
         <div class="card-body">
 
             <h4 class="mb-1">Penempatan Siswa</h4>
@@ -417,10 +381,7 @@ require_once "sidebar.php";
             </p>
 
         </div>
-
     </div>
-
-    <!-- PESAN ERROR -->
 
     <?php if ($error != '') { ?>
 
@@ -430,12 +391,9 @@ require_once "sidebar.php";
 
     <?php } ?>
 
-    <!-- FORM TAMBAH -->
-
     <?php if ($tampil_form) { ?>
 
         <div class="card mb-3">
-
             <div class="card-body">
 
                 <h5 class="mb-3">Tambah Penempatan Siswa</h5>
@@ -446,19 +404,11 @@ require_once "sidebar.php";
 
                         <div class="col-md-6">
 
-                            <label class="form-label fw-bold">
-                                Siswa
-                            </label>
+                            <label class="form-label fw-bold">Siswa</label>
 
-                            <select
-                                name="siswa_id"
-                                class="form-select"
-                                required
-                            >
+                            <select name="siswa_id" class="form-select" required>
 
-                                <option value="">
-                                    -- Pilih Siswa --
-                                </option>
+                                <option value="">-- Pilih Siswa --</option>
 
                                 <?php while ($s = mysqli_fetch_assoc($siswa)) { ?>
 
@@ -474,19 +424,11 @@ require_once "sidebar.php";
 
                         <div class="col-md-6">
 
-                            <label class="form-label fw-bold">
-                                Kelas
-                            </label>
+                            <label class="form-label fw-bold">Kelas</label>
 
-                            <select
-                                name="kelas_id"
-                                class="form-select"
-                                required
-                            >
+                            <select name="kelas_id" class="form-select" required>
 
-                                <option value="">
-                                    -- Pilih Kelas --
-                                </option>
+                                <option value="">-- Pilih Kelas --</option>
 
                                 <?php while ($k = mysqli_fetch_assoc($kelas)) { ?>
 
@@ -502,19 +444,11 @@ require_once "sidebar.php";
 
                         <div class="col-md-6">
 
-                            <label class="form-label fw-bold">
-                                Tahun Ajaran
-                            </label>
+                            <label class="form-label fw-bold">Tahun Ajaran</label>
 
-                            <select
-                                name="tahun_ajaran_id"
-                                class="form-select"
-                                required
-                            >
+                            <select name="tahun_ajaran_id" class="form-select" required>
 
-                                <option value="">
-                                    -- Pilih Tahun Ajaran --
-                                </option>
+                                <option value="">-- Pilih Tahun Ajaran --</option>
 
                                 <?php while ($t = mysqli_fetch_assoc($tahun)) { ?>
 
@@ -533,18 +467,11 @@ require_once "sidebar.php";
 
                     <div class="mt-3">
 
-                        <button
-                            type="submit"
-                            name="simpan"
-                            class="btn btn-stabilo btn-sm"
-                        >
+                        <button type="submit" name="simpan" class="btn btn-stabilo btn-sm">
                             Simpan Penempatan
                         </button>
 
-                        <a
-                            href="penempatan_siswa.php"
-                            class="btn btn-outline-secondary btn-sm"
-                        >
+                        <a href="penempatan_siswa.php" class="btn btn-outline-secondary btn-sm">
                             Batal
                         </a>
 
@@ -553,12 +480,9 @@ require_once "sidebar.php";
                 </form>
 
             </div>
-
         </div>
 
     <?php } ?>
-
-    <!-- DAFTAR PENEMPATAN -->
 
     <div class="card">
 
@@ -570,10 +494,7 @@ require_once "sidebar.php";
 
                 <?php if (!$tampil_form) { ?>
 
-                    <a
-                        href="penempatan_siswa.php?tambah=1"
-                        class="btn btn-sm btn-stabilo"
-                    >
+                    <a href="penempatan_siswa.php?tambah=1" class="btn btn-sm btn-stabilo">
                         + Tambah Penempatan
                     </a>
 
@@ -581,9 +502,9 @@ require_once "sidebar.php";
 
             </div>
 
-            <!-- PENCARIAN -->
+            <!-- SEARCH -->
 
-            <form method="GET" class="row g-2 mb-3">
+            <form method="GET" action="penempatan_siswa.php" class="row g-2 mb-3">
 
                 <div class="col-md-5">
 
@@ -603,12 +524,9 @@ require_once "sidebar.php";
                         Cari
                     </button>
 
-                    <?php if ($cari != '') { ?>
+                    <?php if ($cari !== '') { ?>
 
-                        <a
-                            href="penempatan_siswa.php"
-                            class="btn btn-outline-secondary btn-sm"
-                        >
+                        <a href="penempatan_siswa.php" class="btn btn-outline-secondary btn-sm">
                             Reset
                         </a>
 
@@ -617,8 +535,6 @@ require_once "sidebar.php";
                 </div>
 
             </form>
-
-            <!-- TABEL PENEMPATAN -->
 
             <div class="table-responsive">
 
@@ -649,21 +565,13 @@ require_once "sidebar.php";
 
                                 <td><?= $no++; ?></td>
 
-                                <td>
-                                    <?= htmlspecialchars($row['nis']); ?>
-                                </td>
+                                <td><?= htmlspecialchars($row['nis']); ?></td>
 
-                                <td>
-                                    <?= htmlspecialchars($row['nama_siswa']); ?>
-                                </td>
+                                <td><?= htmlspecialchars($row['nama_siswa']); ?></td>
 
-                                <td>
-                                    <?= htmlspecialchars($row['nama_kelas']); ?>
-                                </td>
+                                <td><?= htmlspecialchars($row['nama_kelas']); ?></td>
 
-                                <td>
-                                    <?= htmlspecialchars($row['tahun_ajaran']); ?>
-                                </td>
+                                <td><?= htmlspecialchars($row['tahun_ajaran']); ?></td>
 
                                 <td class="text-nowrap">
 
@@ -691,11 +599,13 @@ require_once "sidebar.php";
                     <?php } else { ?>
 
                         <tr>
-
                             <td colspan="6" class="text-center py-4">
-                                Belum ada data penempatan siswa.
+                                <?php if ($cari !== '') { ?>
+                                    Data penempatan tidak ditemukan.
+                                <?php } else { ?>
+                                    Belum ada data penempatan siswa.
+                                <?php } ?>
                             </td>
-
                         </tr>
 
                     <?php } ?>
@@ -705,8 +615,6 @@ require_once "sidebar.php";
                 </table>
 
             </div>
-
-            <!-- INFORMASI DATA -->
 
             <div class="text-muted small">
 
@@ -720,8 +628,6 @@ require_once "sidebar.php";
 
             </div>
 
-            <!-- PAGINATION -->
-
             <?php if ($total_halaman > 1) { ?>
 
                 <nav class="mt-3">
@@ -732,10 +638,8 @@ require_once "sidebar.php";
 
                             <li class="page-item">
 
-                                <a
-                                    class="page-link"
-                                    href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($cari); ?>"
-                                >
+                                <a class="page-link"
+                                   href="?halaman=<?= $halaman - 1; ?>&cari=<?= urlencode($cari); ?>">
                                     &laquo;
                                 </a>
 
@@ -747,10 +651,8 @@ require_once "sidebar.php";
 
                             <li class="page-item <?= $i == $halaman ? 'active' : ''; ?>">
 
-                                <a
-                                    class="page-link"
-                                    href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>"
-                                >
+                                <a class="page-link"
+                                   href="?halaman=<?= $i; ?>&cari=<?= urlencode($cari); ?>">
                                     <?= $i; ?>
                                 </a>
 
@@ -762,10 +664,8 @@ require_once "sidebar.php";
 
                             <li class="page-item">
 
-                                <a
-                                    class="page-link"
-                                    href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($cari); ?>"
-                                >
+                                <a class="page-link"
+                                   href="?halaman=<?= $halaman + 1; ?>&cari=<?= urlencode($cari); ?>">
                                     &raquo;
                                 </a>
 
