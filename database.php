@@ -7,12 +7,12 @@
 date_default_timezone_set('Asia/Jakarta');
 
 // =====================================
-// KONEKSI DATABASE
+// KONEKSI DATABASE INFINITYFREE
 // =====================================
-$host = "localhost";
-$user = "root";
-$pass = "";
-$db   = "ukk_2026";
+$host = "sql108.byetcluster.com";
+$user = "if0_42827682";
+$pass = "erlanggaweb22";
+$db   = "if0_42827682_db_ukk";
 
 $koneksi = mysqli_connect($host, $user, $pass, $db);
 
